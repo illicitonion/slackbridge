@@ -19,7 +19,7 @@ func TestSendTextMessage(t *testing.T) {
 		return true
 	}})
 	defer s.Close()
-	c := NewClient("@jack:waterloo.station", "6000000000peopleandyou", http.Client{}, s.URL)
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL)
 	c.SendText("!undertheclock:waterloo.station", "quid pro quo")
 	if got := atomic.LoadInt32(&called); got != 1 {
 		t.Fatalf("Didn't get expected HTTP request, got: %d", got)

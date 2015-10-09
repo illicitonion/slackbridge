@@ -11,9 +11,8 @@ import (
 const pathPrefix = "/_matrix/client/api/v1"
 
 // urlBase: http(s)://host(:port)
-func NewClient(userID, accessToken string, httpClient http.Client, urlBase string) *client {
+func NewClient(accessToken string, httpClient http.Client, urlBase string) *client {
 	return &client{
-		userID:      userID,
 		accessToken: accessToken,
 		client:      httpClient,
 		urlBase:     urlBase,
@@ -21,7 +20,6 @@ func NewClient(userID, accessToken string, httpClient http.Client, urlBase strin
 }
 
 type client struct {
-	userID      string
 	accessToken string
 	client      http.Client
 	urlBase     string
