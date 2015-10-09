@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"golang.org/x/net/websocket"
@@ -13,18 +14,19 @@ import (
 
 const bufSize = 16 * 1024
 
-func NewClient(c http.Client) *client {
+func NewClient(token string, c http.Client) *client {
 	return &client{
+		token:  token,
 		client: c,
 	}
 }
 
-func (c *client) Listen(token string, cancel chan struct{}) error {
+func (c *client) Listen(cancel chan struct{}) error {
 	if c.ws != nil {
 		return fmt.Errorf("already listening")
 	}
 
-	url, err := c.websocketURL(token)
+	url, err := c.websocketURL()
 	if err != nil {
 		return err
 	}
@@ -87,7 +89,40 @@ func (c *client) OnMessage(h func(Message)) {
 	c.messageHandlers = append(c.messageHandlers, h)
 }
 
+// Technically you can use the websocket to send pure text-only messages, but
+// you can't send richer messages like attachments through the websocket, so
+// we will instead consistently use the HTTP API.
+func (c *client) SendText(channelID, text string) error {
+	v := url.Values{}
+	v.Set("token", c.token)
+	v.Set("channel", channelID)
+	v.Set("text", text)
+	v.Set("as_user", "true")
+	resp, err := c.client.PostForm("https://slack.com/api/chat.postMessage", v)
+	if err != nil {
+		return fmt.Errorf("error from slack: %v", err)
+	}
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response from slack: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("error from slack: %d: %s", resp.StatusCode, string(b))
+	}
+	var sr slackResponse
+	if err := json.Unmarshal(b, &sr); err != nil {
+		return fmt.Errorf("error decoding JSON from slack: %v (%v)", err, b)
+	}
+	if !sr.OK {
+		return fmt.Errorf("error from slack: %s", string(b))
+	}
+
+	return nil
+}
+
 type client struct {
+	token  string
 	client http.Client
 	ws     *websocket.Conn
 
@@ -96,8 +131,8 @@ type client struct {
 	messageHandlers []func(Message)
 }
 
-func (c *client) websocketURL(token string) (string, error) {
-	resp, err := c.client.Get("https://slack.com/api/rtm.start?token=" + token)
+func (c *client) websocketURL() (string, error) {
+	resp, err := c.client.Get("https://slack.com/api/rtm.start?token=" + c.token)
 	if err != nil {
 		return "", fmt.Errorf("error starting stream: %v", err)
 	}
@@ -129,4 +164,8 @@ func (c *client) read(ch chan []byte) {
 type rtmStartResponse struct {
 	OK  bool   `json:"ok"`
 	URL string `json:"url"`
+}
+
+type slackResponse struct {
+	OK bool `json:"ok"`
 }

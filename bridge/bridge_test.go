@@ -52,6 +52,7 @@ type MockSlackClient struct {
 	calls []call
 }
 
-func (m *MockSlackClient) SendText(channelID, text string) {
+func (m *MockSlackClient) SendText(channelID, text string) error {
 	m.calls = append(m.calls, call{"SendText", []interface{}{channelID, text}})
+	return nil
 }

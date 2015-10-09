@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,7 +28,7 @@ func TestReceiveHello(t *testing.T) {
 			called()
 		})
 	}
-	test(t, want, do)
+	testReceive(t, want, do)
 }
 
 func TestReceiveMessage(t *testing.T) {
@@ -44,10 +45,41 @@ func TestReceiveMessage(t *testing.T) {
 			called()
 		})
 	}
-	test(t, want, do)
+	testReceive(t, want, do)
 }
 
-func test(t *testing.T, want interface{}, do func(*client, func())) {
+func TestSendMessage(t *testing.T) {
+	called := false
+	client := NewClient("cynicism", http.Client{
+		Transport: &roundTripper{
+			t:        t,
+			response: `{"ok": true}`,
+			called:   &called,
+			filter: func(req *http.Request) bool {
+				if req.URL.String() != "https://slack.com/api/chat.postMessage" {
+					log.Printf("Wrong URL: %q", req.URL.String())
+					return false
+				}
+				if err := req.ParseForm(); err != nil {
+					log.Printf("Error parsing form: %v", err)
+					return false
+				}
+				return req.Form.Get("token") == "cynicism" &&
+					req.Form.Get("channel") == "CANTINA" &&
+					req.Form.Get("text") == "It's a grand gesture" &&
+					req.Form.Get("as_user") == "true"
+			},
+		},
+	})
+	if err := client.SendText("CANTINA", "It's a grand gesture"); err != nil {
+		t.Errorf("Error sending text: %v", err)
+	}
+	if !called {
+		t.Errorf("Expected HTTP request but got none")
+	}
+}
+
+func testReceive(t *testing.T, want interface{}, do func(*client, func())) {
 	client, cancel, closeFn := stubEvent(t, want)
 	defer closeFn()
 
@@ -57,7 +89,7 @@ func test(t *testing.T, want interface{}, do func(*client, func())) {
 	do(client, calledFn)
 
 	go func() {
-		if err := client.Listen("", cancel); err != nil {
+		if err := client.Listen(cancel); err != nil {
 			t.Fatalf("Error listening: %v", err)
 		}
 	}()
@@ -89,8 +121,14 @@ func stubEvent(t *testing.T, e interface{}) (*client, chan struct{}, func()) {
 	}
 
 	cancel := make(chan struct{}, 1)
-	client := NewClient(http.Client{
-		Transport: &roundTripper{string(b)},
+	client := NewClient("", http.Client{
+		Transport: &roundTripper{
+			t:        t,
+			response: string(b),
+			filter: func(*http.Request) bool {
+				return true
+			},
+		},
 	})
 
 	return client, cancel, func() {
@@ -100,12 +138,21 @@ func stubEvent(t *testing.T, e interface{}) (*client, chan struct{}, func()) {
 }
 
 type roundTripper struct {
-	url string
+	t        *testing.T
+	response string
+	filter   func(req *http.Request) bool
+	called   *bool
 }
 
 func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !r.filter(req) {
+		r.t.Errorf("Unexpected HTTP %s to: %s", req.Method, req.URL)
+	}
+	if r.called != nil {
+		*r.called = true
+	}
 	return &http.Response{
 		StatusCode: 200,
-		Body:       ioutil.NopCloser(strings.NewReader(r.url)),
+		Body:       ioutil.NopCloser(strings.NewReader(r.response)),
 	}, nil
 }
