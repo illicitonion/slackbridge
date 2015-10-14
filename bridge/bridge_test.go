@@ -34,6 +34,32 @@ func TestSlackMessage(t *testing.T) {
 	}
 }
 
+func TestMatrixMessage(t *testing.T) {
+	mockMatrixClient := &MockMatrixClient{}
+	mockSlackClient := &MockSlackClient{}
+
+	users := NewUserMap()
+	matrixUser := &matrix.User{"@sean:st.andrews", mockMatrixClient}
+	slackUser := &slack.User{"U35", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
+	rooms := NewRoomMap()
+	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
+
+	bridge := Bridge{users, rooms}
+	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
+		Type:    "m.room.message",
+		Content: []byte(`{"msgtype": "m.text", "body": "It's Nancy!"}`),
+		UserID:  "@sean:st.andrews",
+		RoomID:  "!abc123:matrix.org",
+	})
+
+	want := []call{call{"SendText", []interface{}{"BOWLINGALLEY", "It's Nancy!"}}}
+	if !reflect.DeepEqual(mockSlackClient.calls, want) {
+		t.Fatalf("Wrong Slack calls, want %v got %v", want, mockSlackClient.calls)
+	}
+}
+
 type call struct {
 	method string
 	args   []interface{}
