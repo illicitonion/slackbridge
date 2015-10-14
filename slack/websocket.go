@@ -73,8 +73,8 @@ func (c *client) Listen(cancel chan struct{}) error {
 		case _ = <-cancel:
 			return c.ws.Close()
 		}
-		return nil
 	}
+	return nil
 }
 
 func (c *client) OnHello(h func(Hello)) {

@@ -32,8 +32,13 @@ type client struct {
 
 func (c *client) Listen(cancel chan struct{}) {
 	ch := make(chan *http.Response)
+	var last string
 	for {
-		req, err := http.NewRequest("GET", c.urlBase+pathPrefix+"/events?access_token="+c.accessToken, nil)
+		qs := "?access_token=" + c.accessToken
+		if last != "" {
+			qs += "&from=" + last
+		}
+		req, err := http.NewRequest("GET", c.urlBase+pathPrefix+"/events"+qs, nil)
 		if err != nil {
 			log.Printf("Error making HTTP request: %v", err)
 			continue
@@ -44,7 +49,7 @@ func (c *client) Listen(cancel chan struct{}) {
 			if resp == nil {
 				continue
 			}
-			c.parseResponse(resp.Body)
+			last = c.parseResponse(resp.Body)
 		case <-cancel:
 			if transport, ok := (c.client.Transport).(*http.Transport); ok {
 				transport.CancelRequest(req)
@@ -54,37 +59,41 @@ func (c *client) Listen(cancel chan struct{}) {
 	}
 }
 
-func (c *client) parseResponse(body io.ReadCloser) {
+func (c *client) parseResponse(body io.ReadCloser) string {
 	defer body.Close()
 	var er eventsReply
 	dec := json.NewDecoder(body)
 	if err := dec.Decode(&er); err != nil {
 		log.Printf("Error decoding json: %v", err)
-		return
+		return ""
 	}
 	for _, raw := range er.Chunk {
+		log.Printf("Got matrix event: %s", string(raw))
 		var t typedThing
 		if err := json.Unmarshal(raw, &t); err != nil {
 			log.Printf("Error finding type: %v", err)
-			return
+			continue
 		}
 		switch t.Type {
 		case "m.room.message":
+			log.Println("Got m.room.message")
 			var roomMessage RoomMessage
 			if err := json.Unmarshal(raw, &roomMessage); err != nil {
 				log.Printf("Error decoding inner json: %v", err)
-				return
+				continue
 			}
 			if len(c.roomMessageHandlers) == 0 {
 				log.Printf("No listeners for room message events")
 			}
 			for _, h := range c.roomMessageHandlers {
+				log.Printf("Sending received matrix message to handler")
 				h(roomMessage)
 			}
 		default:
 			log.Printf("Ignoring unknown event %q", string(raw))
 		}
 	}
+	return er.End
 }
 
 func (c *client) poll(ch chan *http.Response, req *http.Request) {
@@ -97,6 +106,7 @@ func (c *client) poll(ch chan *http.Response, req *http.Request) {
 
 type eventsReply struct {
 	Chunk []json.RawMessage `json:"chunk"`
+	End   string            `json:"end"`
 }
 
 type typedThing struct {

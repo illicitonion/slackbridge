@@ -21,7 +21,7 @@ func TestSlackMessage(t *testing.T) {
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
 	bridge := Bridge{users, rooms}
-	bridge.OnSlackMessage(&slack.Message{
+	bridge.OnSlackMessage(slack.Message{
 		Type:    "message",
 		Channel: "CANTINA",
 		User:    "U34",

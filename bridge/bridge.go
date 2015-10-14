@@ -13,7 +13,7 @@ type Bridge struct {
 	RoomMap *RoomMap
 }
 
-func (b *Bridge) OnSlackMessage(m *slack.Message) {
+func (b *Bridge) OnSlackMessage(m slack.Message) {
 	matrixUser := b.UserMap.MatrixForSlack(m.User)
 	if matrixUser == nil {
 		log.Printf("Ignoring event from unknown slack user %q", m.User)
@@ -29,7 +29,7 @@ func (b *Bridge) OnSlackMessage(m *slack.Message) {
 	}
 }
 
-func (b *Bridge) OnMatrixRoomMessage(m *matrix.RoomMessage) {
+func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 	slackUser := b.UserMap.SlackForMatrix(m.UserID)
 	if slackUser == nil {
 		log.Printf("Ignoring event from unknown matrix user: %q", m.UserID)
