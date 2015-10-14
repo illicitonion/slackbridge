@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"sync"
 )
 
 const pathPrefix = "/_matrix/client/api/v1"
@@ -23,6 +25,88 @@ type client struct {
 	accessToken string
 	client      http.Client
 	urlBase     string
+
+	mu                  sync.Mutex
+	roomMessageHandlers []func(RoomMessage)
+}
+
+func (c *client) Listen(cancel chan struct{}) {
+	ch := make(chan *http.Response)
+	for {
+		req, err := http.NewRequest("GET", c.urlBase+pathPrefix+"/events?access_token="+c.accessToken, nil)
+		if err != nil {
+			log.Printf("Error making HTTP request: %v", err)
+			continue
+		}
+		go c.poll(ch, req)
+		select {
+		case resp := <-ch:
+			if resp == nil {
+				continue
+			}
+			c.parseResponse(resp.Body)
+		case <-cancel:
+			if transport, ok := (c.client.Transport).(*http.Transport); ok {
+				transport.CancelRequest(req)
+				return
+			}
+		}
+	}
+}
+
+func (c *client) parseResponse(body io.ReadCloser) {
+	defer body.Close()
+	var er eventsReply
+	dec := json.NewDecoder(body)
+	if err := dec.Decode(&er); err != nil {
+		log.Printf("Error decoding json: %v", err)
+		return
+	}
+	for _, raw := range er.Chunk {
+		var t typedThing
+		if err := json.Unmarshal(raw, &t); err != nil {
+			log.Printf("Error finding type: %v", err)
+			return
+		}
+		switch t.Type {
+		case "m.room.message":
+			var roomMessage RoomMessage
+			if err := json.Unmarshal(raw, &roomMessage); err != nil {
+				log.Printf("Error decoding inner json: %v", err)
+				return
+			}
+			if len(c.roomMessageHandlers) == 0 {
+				log.Printf("No listeners for room message events")
+			}
+			for _, h := range c.roomMessageHandlers {
+				h(roomMessage)
+			}
+		default:
+			log.Printf("Ignoring unknown event %q", string(raw))
+		}
+	}
+}
+
+func (c *client) poll(ch chan *http.Response, req *http.Request) {
+	resp, err := c.client.Do(req)
+	if err != nil {
+		log.Printf("Error from HTTP request: %v", err)
+	}
+	ch <- resp
+}
+
+type eventsReply struct {
+	Chunk []json.RawMessage `json:"chunk"`
+}
+
+type typedThing struct {
+	Type string `json:"type"`
+}
+
+func (c *client) OnRoomMessage(h func(RoomMessage)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.roomMessageHandlers = append(c.roomMessageHandlers, h)
 }
 
 func (c *client) SendText(roomID, text string) error {

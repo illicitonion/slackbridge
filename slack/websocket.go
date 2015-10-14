@@ -50,7 +50,7 @@ func (c *client) Listen(cancel chan struct{}) error {
 				if err := json.Unmarshal(b, &h); err != nil {
 					log.Printf("Error unmarshaling websocket response: %v", err)
 				}
-				if len(c.helloHandlers) != 0 {
+				if len(c.helloHandlers) == 0 {
 					log.Printf("No listeners for hello events")
 				}
 				for _, c := range c.helloHandlers {
@@ -61,7 +61,7 @@ func (c *client) Listen(cancel chan struct{}) error {
 				if err := json.Unmarshal(b, &m); err != nil {
 					log.Printf("Error unmarshaling websocket response: %v", err)
 				}
-				if len(c.messageHandlers) != 0 {
+				if len(c.messageHandlers) == 0 {
 					log.Printf("No listeners for message events")
 				}
 				for _, c := range c.messageHandlers {

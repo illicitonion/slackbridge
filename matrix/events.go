@@ -1,10 +1,12 @@
 package matrix
 
-type TextMessage struct {
-	Content *TextMessageContent `json:"content"`
-	RoomID  string              `json:"room_id"`
-	Type    string              `json:"type"`
-	UserID  string              `json:"user-id"`
+import "encoding/json"
+
+type RoomMessage struct {
+	Type    string          `json:"type"`
+	Content json.RawMessage `json:"content"`
+	UserID  string          `json:"user_id"`
+	RoomID  string          `json:"room_id"`
 }
 
 type TextMessageContent struct {

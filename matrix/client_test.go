@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSendTextMessage(t *testing.T) {
@@ -26,6 +27,46 @@ func TestSendTextMessage(t *testing.T) {
 	}
 }
 
+func TestListenOneRoomMessage(t *testing.T) {
+	s := httptest.NewServer(&stubHandler{`{
+	"chunk": [{
+	  "content": {
+	    "body": "I'm a firewoman",
+	    "msgtype": "m.text"
+	  },
+	  "room_id": "!cantina:london",
+	  "type": "m.room.message",
+	  "user_id": "@nancy:london"
+	}],
+	"start": "1",
+	"end": "1"
+}`})
+	defer s.Close()
+
+	called := make(chan struct{}, 1)
+
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL)
+
+	c.OnRoomMessage(func(m RoomMessage) {
+		if m.RoomID != "!cantina:london" {
+			t.Errorf("RoomID: want %q got %q", "!cantina:london", m.RoomID)
+		}
+		if m.UserID != "@nancy:london" {
+			t.Errorf("UserID: want %q got %q", "@nancy:london", m.UserID)
+		}
+		called <- struct{}{}
+	})
+	ch := make(chan struct{}, 1)
+	go c.Listen(ch)
+	select {
+	case _ = <-called:
+		ch <- struct{}{}
+		return
+	case _ = <-time.After(50 * time.Millisecond):
+		t.Fatalf("Timed out waiting for event")
+	}
+}
+
 type handler struct {
 	t      *testing.T
 	called *int32
@@ -38,4 +79,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	atomic.AddInt32(h.called, 1)
 	io.WriteString(w, "{}")
+}
+
+type stubHandler struct {
+	response string
+}
+
+func (h *stubHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	io.WriteString(w, h.response)
 }
