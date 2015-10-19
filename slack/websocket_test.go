@@ -28,7 +28,7 @@ func TestReceiveHello(t *testing.T) {
 			called()
 		})
 	}
-	testReceive(t, want, do)
+	testReceive(t, want, do, &SendAll{})
 }
 
 func TestReceiveMessage(t *testing.T) {
@@ -45,7 +45,37 @@ func TestReceiveMessage(t *testing.T) {
 			called()
 		})
 	}
-	testReceive(t, want, do)
+	testReceive(t, want, do, &SendAll{})
+}
+
+func TestIgnoresFilteredMessages(t *testing.T) {
+	want := Message{
+		Type: "message",
+		User: "nancy",
+		Text: "I'm a... firewoman",
+	}
+
+	client, cancel, closeFn := stubEvent(t, want, &stubMessageFilter{func(m *Message) bool { return false }})
+	defer closeFn()
+
+	called := make(chan struct{})
+
+	client.OnMessage(func(got Message) {
+		called <- struct{}{}
+	})
+
+	go func() {
+		if err := client.Listen(cancel); err != nil {
+			t.Fatalf("Error listening: %v", err)
+		}
+	}()
+
+	select {
+	case _ = <-called:
+		t.Fatalf("Got unexpected message")
+	case _ = <-time.After(50 * time.Millisecond):
+		return
+	}
 }
 
 func TestSendMessage(t *testing.T) {
@@ -70,7 +100,7 @@ func TestSendMessage(t *testing.T) {
 					req.Form.Get("as_user") == "true"
 			},
 		},
-	})
+	}, &SendAll{})
 	if err := client.SendText("CANTINA", "It's a grand gesture"); err != nil {
 		t.Errorf("Error sending text: %v", err)
 	}
@@ -79,8 +109,8 @@ func TestSendMessage(t *testing.T) {
 	}
 }
 
-func testReceive(t *testing.T, want interface{}, do func(*client, func())) {
-	client, cancel, closeFn := stubEvent(t, want)
+func testReceive(t *testing.T, want interface{}, do func(*client, func()), filter MessageFilter) {
+	client, cancel, closeFn := stubEvent(t, want, filter)
 	defer closeFn()
 
 	called := make(chan struct{})
@@ -102,7 +132,7 @@ func testReceive(t *testing.T, want interface{}, do func(*client, func())) {
 	}
 }
 
-func stubEvent(t *testing.T, e interface{}) (*client, chan struct{}, func()) {
+func stubEvent(t *testing.T, e interface{}, filter MessageFilter) (*client, chan struct{}, func()) {
 	f := func(ws *websocket.Conn) {
 		b, err := json.Marshal(e)
 		if err != nil {
@@ -129,12 +159,20 @@ func stubEvent(t *testing.T, e interface{}) (*client, chan struct{}, func()) {
 				return true
 			},
 		},
-	})
+	}, filter)
 
 	return client, cancel, func() {
 		s.Close()
 		cancel <- struct{}{}
 	}
+}
+
+type stubMessageFilter struct {
+	fn func(m *Message) bool
+}
+
+func (s *stubMessageFilter) ShouldNotify(m *Message) bool {
+	return s.fn(m)
 }
 
 type roundTripper struct {

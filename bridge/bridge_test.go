@@ -1,11 +1,16 @@
 package bridge
 
 import (
+	"database/sql"
+	"io/ioutil"
+	"path"
 	"reflect"
 	"testing"
 
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestSlackMessage(t *testing.T) {
@@ -17,7 +22,7 @@ func TestSlackMessage(t *testing.T) {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	rooms := NewRoomMap()
+	rooms := NewRoomMap(makeDB(t))
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
 	bridge := Bridge{users, rooms}
@@ -43,7 +48,7 @@ func TestMatrixMessage(t *testing.T) {
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	rooms := NewRoomMap()
+	rooms := NewRoomMap(makeDB(t))
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
 	bridge := Bridge{users, rooms}
@@ -58,6 +63,58 @@ func TestMatrixMessage(t *testing.T) {
 	if !reflect.DeepEqual(mockSlackClient.calls, want) {
 		t.Fatalf("Wrong Slack calls, want %v got %v", want, mockSlackClient.calls)
 	}
+}
+
+func TestLoadsConfig(t *testing.T) {
+	dir, err := ioutil.TempDir("", "testdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := path.Join(dir, "sqlite3.db")
+	db := makeDBAt(t, file)
+	bridge := makeBridge(t, db)
+
+	slackMessage := &slack.Message{
+		Type:    "message",
+		Channel: "CANTINA",
+		User:    "U34",
+		Text:    "Take more chances",
+		TS:      "10",
+	}
+	if !bridge.RoomMap.ShouldNotify(slackMessage) {
+		t.Errorf("want should notify, got should not notify")
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("Error closing db: %v", err)
+	}
+
+	db, err = sql.Open("sqlite3", file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge = makeBridge(t, db)
+	if bridge.RoomMap.ShouldNotify(slackMessage) {
+		t.Errorf("want should not notify, got should notify")
+	}
+}
+
+func makeBridge(t *testing.T, db *sql.DB) *Bridge {
+	mockMatrixClient := &MockMatrixClient{}
+	mockSlackClient := &MockSlackClient{}
+
+	users := NewUserMap()
+	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
+	slackUser := &slack.User{"U34", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
+	rooms := NewRoomMap(db)
+	// Subsequent calls should load link from database, but don't yet
+	if err := rooms.Link("!abc123:matrix.org", "CANTINA"); err != nil {
+		t.Fatalf("Error linking rooms: %v", err)
+	}
+
+	return &Bridge{users, rooms}
 }
 
 type call struct {

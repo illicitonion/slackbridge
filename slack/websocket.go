@@ -14,10 +14,11 @@ import (
 
 const bufSize = 16 * 1024
 
-func NewClient(token string, c http.Client) *client {
+func NewClient(token string, c http.Client, messageFilter MessageFilter) *client {
 	return &client{
-		token:  token,
-		client: c,
+		token:         token,
+		client:        c,
+		messageFilter: messageFilter,
 	}
 }
 
@@ -60,6 +61,10 @@ func (c *client) Listen(cancel chan struct{}) error {
 				var m Message
 				if err := json.Unmarshal(b, &m); err != nil {
 					log.Printf("Error unmarshaling websocket response: %v", err)
+				}
+				if !c.messageFilter.ShouldNotify(&m) {
+					log.Printf("Skipping filtered message: %v", m)
+					continue
 				}
 				if len(c.messageHandlers) == 0 {
 					log.Printf("No listeners for message events")
@@ -129,6 +134,8 @@ type client struct {
 	mu              sync.Mutex
 	helloHandlers   []func(Hello)
 	messageHandlers []func(Message)
+
+	messageFilter MessageFilter
 }
 
 func (c *client) websocketURL() (string, error) {
@@ -168,4 +175,14 @@ type rtmStartResponse struct {
 
 type slackResponse struct {
 	OK bool `json:"ok"`
+}
+
+type MessageFilter interface {
+	ShouldNotify(m *Message) bool
+}
+
+type SendAll struct{}
+
+func (f *SendAll) ShouldNotify(m *Message) bool {
+	return true
 }
