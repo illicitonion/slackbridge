@@ -22,7 +22,10 @@ func TestSlackMessage(t *testing.T) {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	rooms := NewRoomMap(makeDB(t))
+	rooms, err := NewRoomMap(makeDB(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
 	bridge := Bridge{users, rooms}
@@ -48,7 +51,10 @@ func TestMatrixMessage(t *testing.T) {
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	rooms := NewRoomMap(makeDB(t))
+	rooms, err := NewRoomMap(makeDB(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
 	bridge := Bridge{users, rooms}
@@ -108,7 +114,10 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	rooms := NewRoomMap(db)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Subsequent calls should load link from database, but don't yet
 	if err := rooms.Link("!abc123:matrix.org", "CANTINA"); err != nil {
 		t.Fatalf("Error linking rooms: %v", err)

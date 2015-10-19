@@ -10,8 +10,8 @@ import (
 	"github.com/matrix-org/slackbridge/slack"
 )
 
-func NewRoomMap(db *sql.DB) *RoomMap {
-	return &RoomMap{
+func NewRoomMap(db *sql.DB) (*RoomMap, error) {
+	m := &RoomMap{
 		matrixToSlack: make(map[string]string),
 		slackToMatrix: make(map[string]string),
 		rows:          make(map[string]*entry),
@@ -26,6 +26,26 @@ func NewRoomMap(db *sql.DB) *RoomMap {
 		*/
 		db: db,
 	}
+
+	rows, err := db.Query("SELECT id, slack_channel_id, matrix_room_id FROM rooms ORDER BY id ASC")
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id int32
+		var slack string
+		var matrix string
+		if err := rows.Scan(&id, &slack, &matrix); err != nil {
+			return nil, err
+		}
+		if err := m.Link(matrix, slack); err != nil {
+			return nil, err
+		}
+	}
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	return m, nil
 }
 
 func (m *RoomMap) MatrixForSlack(slack string) string {
