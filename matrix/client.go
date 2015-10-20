@@ -30,6 +30,14 @@ type client struct {
 	roomMessageHandlers []func(RoomMessage)
 }
 
+func (c *client) Homeserver() string {
+	return c.urlBase
+}
+
+func (c *client) AccessToken() string {
+	return c.accessToken
+}
+
 func (c *client) Listen(cancel chan struct{}) {
 	ch := make(chan *http.Response)
 	var last string

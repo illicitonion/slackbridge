@@ -126,6 +126,10 @@ func (c *client) SendText(channelID, text string) error {
 	return nil
 }
 
+func (c *client) AccessToken() string {
+	return c.token
+}
+
 type client struct {
 	token  string
 	client http.Client

@@ -3,6 +3,7 @@ package bridge
 import (
 	"database/sql"
 	"io/ioutil"
+	"net/http"
 	"path"
 	"reflect"
 	"testing"
@@ -17,16 +18,20 @@ func TestSlackMessage(t *testing.T) {
 	mockMatrixClient := &MockMatrixClient{}
 	mockSlackClient := &MockSlackClient{}
 
-	users := NewUserMap()
-	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
-	slackUser := &slack.User{"U34", mockSlackClient}
-	users.Link(matrixUser, slackUser)
-
-	rooms, err := NewRoomMap(makeDB(t))
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
+
+	users, err := NewUserMap(db, http.Client{}, rooms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
+	slackUser := &slack.User{"U34", mockSlackClient}
+	users.Link(matrixUser, slackUser)
 
 	bridge := Bridge{users, rooms}
 	bridge.OnSlackMessage(slack.Message{
@@ -46,16 +51,20 @@ func TestMatrixMessage(t *testing.T) {
 	mockMatrixClient := &MockMatrixClient{}
 	mockSlackClient := &MockSlackClient{}
 
-	users := NewUserMap()
-	matrixUser := &matrix.User{"@sean:st.andrews", mockMatrixClient}
-	slackUser := &slack.User{"U35", mockSlackClient}
-	users.Link(matrixUser, slackUser)
-
-	rooms, err := NewRoomMap(makeDB(t))
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
+
+	users, err := NewUserMap(db, http.Client{}, rooms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := &matrix.User{"@sean:st.andrews", mockMatrixClient}
+	slackUser := &slack.User{"U35", mockSlackClient}
+	users.Link(matrixUser, slackUser)
 
 	bridge := Bridge{users, rooms}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
@@ -109,15 +118,19 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 	mockMatrixClient := &MockMatrixClient{}
 	mockSlackClient := &MockSlackClient{}
 
-	users := NewUserMap()
-	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
-	slackUser := &slack.User{"U34", mockSlackClient}
-	users.Link(matrixUser, slackUser)
-
 	rooms, err := NewRoomMap(db)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	users, err := NewUserMap(db, http.Client{}, rooms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
+	slackUser := &slack.User{"U34", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
 	// Subsequent calls should load link from database, but don't yet
 	if err := rooms.Link("!abc123:matrix.org", "CANTINA"); err != nil {
 		t.Fatalf("Error linking rooms: %v", err)
@@ -140,6 +153,14 @@ func (m *MockMatrixClient) SendText(roomID, text string) error {
 	return nil
 }
 
+func (m *MockMatrixClient) AccessToken() string {
+	return ""
+}
+
+func (m *MockMatrixClient) Homeserver() string {
+	return ""
+}
+
 type MockSlackClient struct {
 	calls []call
 }
@@ -147,4 +168,8 @@ type MockSlackClient struct {
 func (m *MockSlackClient) SendText(channelID, text string) error {
 	m.calls = append(m.calls, call{"SendText", []interface{}{channelID, text}})
 	return nil
+}
+
+func (m *MockSlackClient) AccessToken() string {
+	return ""
 }
