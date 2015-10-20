@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"path"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/matrix-org/slackbridge/matrix"
@@ -33,7 +35,7 @@ func TestSlackMessage(t *testing.T) {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms}
+	bridge := Bridge{users, rooms, nil, http.Client{}}
 	bridge.OnSlackMessage(slack.Message{
 		Type:    "message",
 		Channel: "CANTINA",
@@ -66,7 +68,7 @@ func TestMatrixMessage(t *testing.T) {
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms}
+	bridge := Bridge{users, rooms, nil, http.Client{}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "It's Nancy!"}`),
@@ -77,6 +79,61 @@ func TestMatrixMessage(t *testing.T) {
 	want := []call{call{"SendText", []interface{}{"BOWLINGALLEY", "It's Nancy!"}}}
 	if !reflect.DeepEqual(mockSlackClient.calls, want) {
 		t.Fatalf("Wrong Slack calls, want %v got %v", want, mockSlackClient.calls)
+	}
+}
+
+func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slackChannel := "BOWLINGALLEY"
+	matrixRoom := "!abc123:matrix.org"
+	message := "It's Nancy!"
+	matrixUser := "@sean:st.andrews"
+
+	rooms.Link(matrixRoom, slackChannel)
+
+	users, err := NewUserMap(db, http.Client{}, rooms)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	slackRoomMembers := &slack.RoomMembers{map[string][]*slack.User{
+		slackChannel: []*slack.User{&slack.User{"someone", &MockSlackClient{}}},
+	}}
+
+	verify := func(req *http.Request) {
+		b, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("Error reading request body: %v", err)
+		}
+		v, err := url.ParseQuery(string(b))
+		if err != nil {
+			t.Fatalf("Error parsing request body: %v", err)
+		}
+		assertUrlValueEquals(t, v, "token", "slack_access_token")
+		assertUrlValueEquals(t, v, "channel", slackChannel)
+		assertUrlValueEquals(t, v, "text", message)
+		assertUrlValueEquals(t, v, "as_user", "false")
+		assertUrlValueEquals(t, v, "username", matrixUser)
+	}
+	client := http.Client{
+		Transport: &spyRoundTripper{verify},
+	}
+	bridge := Bridge{users, rooms, slackRoomMembers, client}
+	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
+		Type:    "m.room.message",
+		Content: []byte(`{"msgtype": "m.text", "body": ` + message + `}`),
+		UserID:  matrixUser,
+		RoomID:  matrixRoom,
+	})
+}
+
+func assertUrlValueEquals(t *testing.T, v url.Values, key, want string) {
+	if got := v.Get(key); got != want {
+		t.Errorf("%s: want: %q got %q", key, want, got)
 	}
 }
 
@@ -136,7 +193,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatalf("Error linking rooms: %v", err)
 	}
 
-	return &Bridge{users, rooms}
+	return &Bridge{users, rooms, nil, http.Client{}}
 }
 
 type call struct {
@@ -171,5 +228,17 @@ func (m *MockSlackClient) SendText(channelID, text string) error {
 }
 
 func (m *MockSlackClient) AccessToken() string {
-	return ""
+	return "slack_access_token"
+}
+
+type spyRoundTripper struct {
+	fn func(*http.Request)
+}
+
+func (r *spyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.fn(req)
+	return &http.Response{
+		StatusCode: 200,
+		Body:       ioutil.NopCloser(strings.NewReader(`{"ok": true}`)),
+	}, nil
 }

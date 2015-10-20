@@ -3,14 +3,17 @@ package bridge
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 )
 
 type Bridge struct {
-	UserMap *UserMap
-	RoomMap *RoomMap
+	UserMap          *UserMap
+	RoomMap          *RoomMap
+	SlackRoomMembers *slack.RoomMembers
+	Client           http.Client
 }
 
 func (b *Bridge) OnSlackMessage(m slack.Message) {
@@ -30,15 +33,14 @@ func (b *Bridge) OnSlackMessage(m slack.Message) {
 }
 
 func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
-	slackUser := b.UserMap.SlackForMatrix(m.UserID)
-	if slackUser == nil {
-		log.Printf("Ignoring event from unknown matrix user: %q", m.UserID)
-		return
-	}
 	slackChannel := b.RoomMap.SlackForMatrix(m.RoomID)
 	if slackChannel == "" {
 		log.Printf("Ignoring event for unknown matrix room %q", m.RoomID)
 		return
+	}
+	slackUser := b.UserMap.SlackForMatrix(m.UserID)
+	if slackUser == nil {
+		slackUser = b.slackUserFor(slackChannel, m.UserID)
 	}
 	var c matrix.TextMessageContent
 	if err := json.Unmarshal(m.Content, &c); err != nil {
@@ -48,4 +50,18 @@ func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 	if err := slackUser.Client.SendText(slackChannel, c.Body); err != nil {
 		log.Printf("Error sending text to Slack: %v", err)
 	}
+}
+
+func (b *Bridge) slackUserFor(slackChannel, userID string) *slack.User {
+	token := b.botAccessToken(slackChannel)
+	client := slack.NewBotClient(token, userID, b.Client, b.RoomMap)
+	return &slack.User{userID, client}
+}
+
+func (b *Bridge) botAccessToken(slackChannel string) string {
+	user := b.SlackRoomMembers.Any(slackChannel)
+	if user == nil {
+		return ""
+	}
+	return user.Client.AccessToken()
 }

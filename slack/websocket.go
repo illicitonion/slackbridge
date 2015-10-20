@@ -19,6 +19,16 @@ func NewClient(token string, c http.Client, messageFilter MessageFilter) *client
 		token:         token,
 		client:        c,
 		messageFilter: messageFilter,
+		asUser:        "",
+	}
+}
+
+func NewBotClient(token, asUser string, c http.Client, messageFilter MessageFilter) *client {
+	return &client{
+		token:         token,
+		client:        c,
+		messageFilter: messageFilter,
+		asUser:        asUser,
 	}
 }
 
@@ -102,7 +112,12 @@ func (c *client) SendText(channelID, text string) error {
 	v.Set("token", c.token)
 	v.Set("channel", channelID)
 	v.Set("text", text)
-	v.Set("as_user", "true")
+	if c.asUser == "" {
+		v.Set("as_user", "true")
+	} else {
+		v.Set("as_user", "false")
+		v.Set("username", c.asUser)
+	}
 	resp, err := c.client.PostForm("https://slack.com/api/chat.postMessage", v)
 	if err != nil {
 		return fmt.Errorf("error from slack: %v", err)
@@ -132,6 +147,7 @@ func (c *client) AccessToken() string {
 
 type client struct {
 	token  string
+	asUser string
 	client http.Client
 	ws     *websocket.Conn
 
