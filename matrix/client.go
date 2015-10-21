@@ -12,19 +12,27 @@ import (
 
 const pathPrefix = "/_matrix/client/api/v1"
 
+type MessageFilter func(string) bool
+
+func AlwaysNotify(string) bool {
+	return true
+}
+
 // urlBase: http(s)://host(:port)
-func NewClient(accessToken string, httpClient http.Client, urlBase string) *client {
+func NewClient(accessToken string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
 	return &client{
-		accessToken: accessToken,
-		client:      httpClient,
-		urlBase:     urlBase,
+		accessToken:    accessToken,
+		client:         httpClient,
+		urlBase:        urlBase,
+		echoSuppresser: echoSuppresser,
 	}
 }
 
 type client struct {
-	accessToken string
-	client      http.Client
-	urlBase     string
+	accessToken    string
+	client         http.Client
+	urlBase        string
+	echoSuppresser *EchoSuppresser
 
 	mu                  sync.Mutex
 	roomMessageHandlers []func(RoomMessage)
@@ -90,6 +98,10 @@ func (c *client) parseResponse(body io.ReadCloser) string {
 				log.Printf("Error decoding inner json: %v", err)
 				continue
 			}
+			if c.echoSuppresser.WasSent(roomMessage.EventID) {
+				log.Printf("Skipping filtered message: %v", roomMessage)
+				continue
+			}
 			if len(c.roomMessageHandlers) == 0 {
 				log.Printf("No listeners for room message events")
 			}
@@ -150,8 +162,41 @@ func (c *client) SendText(roomID, text string) error {
 	if err != nil {
 		return fmt.Errorf("error reading response from homeserver: %v", err)
 	}
+	var e eventSendResponse
+	if err := json.Unmarshal(b, &e); err != nil {
+		log.Printf("Error unmarshaling event send response: %v (%s)", err, string(b))
+	} else {
+		c.echoSuppresser.Sent(e.EventID)
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+type eventSendResponse struct {
+	EventID string `json:"event_id"`
+}
+
+func NewEchoSuppresser() *EchoSuppresser {
+	return &EchoSuppresser{
+		sentEvents: make(map[string]bool),
+	}
+}
+
+type EchoSuppresser struct {
+	sentEvents map[string]bool // eventID -> didSend
+	mu         sync.RWMutex
+}
+
+func (s *EchoSuppresser) Sent(eventID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sentEvents[eventID] = true
+}
+
+func (s *EchoSuppresser) WasSent(eventID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sentEvents[eventID]
 }

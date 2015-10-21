@@ -27,7 +27,7 @@ func TestSlackMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
-	users, err := NewUserMap(db, http.Client{}, rooms)
+	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestMatrixMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
-	users, err := NewUserMap(db, http.Client{}, rooms)
+	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 
 	rooms.Link(matrixRoom, slackChannel)
 
-	users, err := NewUserMap(db, http.Client{}, rooms)
+	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatal(err)
 	}
 
-	users, err := NewUserMap(db, http.Client{}, rooms)
+	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}

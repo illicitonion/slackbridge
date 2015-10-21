@@ -23,7 +23,7 @@ func TestUserMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	users, err := NewUserMap(db, http.Client{}, rooms)
+	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestUserMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	users, err = NewUserMap(db, http.Client{}, rooms)
+	users, err = NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}

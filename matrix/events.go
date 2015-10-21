@@ -7,6 +7,7 @@ type RoomMessage struct {
 	Content json.RawMessage `json:"content"`
 	UserID  string          `json:"user_id"`
 	RoomID  string          `json:"room_id"`
+	EventID string          `json:"event_id"`
 }
 
 type TextMessageContent struct {

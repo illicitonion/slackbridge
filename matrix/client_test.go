@@ -20,7 +20,7 @@ func TestSendTextMessage(t *testing.T) {
 		return true
 	}})
 	defer s.Close()
-	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL)
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, NewEchoSuppresser())
 	c.SendText("!undertheclock:waterloo.station", "quid pro quo")
 	if got := atomic.LoadInt32(&called); got != 1 {
 		t.Fatalf("Didn't get expected HTTP request, got: %d", got)
@@ -28,6 +28,30 @@ func TestSendTextMessage(t *testing.T) {
 }
 
 func TestListenOneRoomMessage(t *testing.T) {
+	listenTest(t, NewEchoSuppresser(), func(called chan struct{}) {
+		select {
+		case _ = <-called:
+			return
+		case _ = <-time.After(50 * time.Millisecond):
+			t.Fatalf("Timed out waiting for event")
+		}
+	})
+}
+
+func TestSuppressEcho(t *testing.T) {
+	echoSuppresser := NewEchoSuppresser()
+	echoSuppresser.Sent("abc123:some.server")
+	listenTest(t, echoSuppresser, func(called chan struct{}) {
+		select {
+		case _ = <-called:
+			t.Fatalf("Should not have been called")
+		case _ = <-time.After(50 * time.Millisecond):
+			return
+		}
+	})
+}
+
+func listenTest(t *testing.T, echoSuppresser *EchoSuppresser, verify func(chan struct{})) {
 	s := httptest.NewServer(&stubHandler{`{
 	"chunk": [{
 	  "content": {
@@ -36,7 +60,8 @@ func TestListenOneRoomMessage(t *testing.T) {
 	  },
 	  "room_id": "!cantina:london",
 	  "type": "m.room.message",
-	  "user_id": "@nancy:london"
+	  "user_id": "@nancy:london",
+	  "event_id": "abc123:some.server"
 	}],
 	"start": "1",
 	"end": "1"
@@ -45,7 +70,7 @@ func TestListenOneRoomMessage(t *testing.T) {
 
 	called := make(chan struct{}, 1)
 
-	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL)
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, echoSuppresser)
 
 	c.OnRoomMessage(func(m RoomMessage) {
 		if m.RoomID != "!cantina:london" {
@@ -57,14 +82,9 @@ func TestListenOneRoomMessage(t *testing.T) {
 		called <- struct{}{}
 	})
 	ch := make(chan struct{}, 1)
+	defer func() { ch <- struct{}{} }()
 	go c.Listen(ch)
-	select {
-	case _ = <-called:
-		ch <- struct{}{}
-		return
-	case _ = <-time.After(50 * time.Millisecond):
-		t.Fatalf("Timed out waiting for event")
-	}
+	verify(called)
 }
 
 type handler struct {
