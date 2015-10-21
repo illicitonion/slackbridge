@@ -27,7 +27,7 @@ func (b *Bridge) OnSlackMessage(m slack.Message) {
 		log.Printf("Ignoring event for unknown slack room %q", m.Channel)
 		return
 	}
-	if err := matrixUser.Client.SendText(matrixRoom, m.Text); err != nil {
+	if err := matrixUser.Client.SendText(matrixRoom, slackToMatrix(m.Text)); err != nil {
 		log.Printf("Error sending text to Matrix: %v", err)
 	}
 }
