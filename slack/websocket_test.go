@@ -28,7 +28,7 @@ func TestReceiveHello(t *testing.T) {
 			called()
 		})
 	}
-	testReceive(t, want, do, &SendAll{})
+	testReceive(t, want, do, AlwaysNotify)
 }
 
 func TestReceiveMessage(t *testing.T) {
@@ -45,7 +45,7 @@ func TestReceiveMessage(t *testing.T) {
 			called()
 		})
 	}
-	testReceive(t, want, do, &SendAll{})
+	testReceive(t, want, do, AlwaysNotify)
 }
 
 func TestIgnoresFilteredMessages(t *testing.T) {
@@ -55,7 +55,7 @@ func TestIgnoresFilteredMessages(t *testing.T) {
 		Text: "I'm a... firewoman",
 	}
 
-	client, cancel, closeFn := stubEvent(t, want, &stubMessageFilter{func(m *Message) bool { return false }})
+	client, cancel, closeFn := stubEvent(t, want, func(m *Message) bool { return false })
 	defer closeFn()
 
 	called := make(chan struct{})
@@ -100,7 +100,7 @@ func TestSendMessage(t *testing.T) {
 					req.Form.Get("as_user") == "true"
 			},
 		},
-	}, &SendAll{})
+	}, AlwaysNotify)
 	if err := client.SendText("CANTINA", "It's a grand gesture"); err != nil {
 		t.Errorf("Error sending text: %v", err)
 	}

@@ -54,7 +54,7 @@ func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 
 func (b *Bridge) slackUserFor(slackChannel, userID string) *slack.User {
 	token := b.botAccessToken(slackChannel)
-	client := slack.NewBotClient(token, userID, b.Client, b.RoomMap)
+	client := slack.NewBotClient(token, userID, b.Client, b.RoomMap.ShouldNotify)
 	return &slack.User{userID, client}
 }
 

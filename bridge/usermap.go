@@ -44,7 +44,7 @@ func NewUserMap(db *sql.DB, httpClient http.Client, rooms *RoomMap) (*UserMap, e
 		matrixClient := matrix.NewClient(matrixToken.String, httpClient, matrixHomeserver.String)
 		matrixUser := &matrix.User{matrixID, matrixClient}
 
-		slackClient := slack.NewClient(slackToken.String, httpClient, rooms)
+		slackClient := slack.NewClient(slackToken.String, httpClient, rooms.ShouldNotify)
 		slackUser := &slack.User{slackID, slackClient}
 
 		if err := m.Link(matrixUser, slackUser); err != nil {
