@@ -2,28 +2,36 @@ package bridge
 
 import "testing"
 
-func SlackToMatrix_TestUnescapesSpecialCharacters(t *testing.T) {
+func TestMatrixToSlack_TestEscapesSpecialCharacters(t *testing.T) {
+	matrix := "<special & characters>"
+	slack := "&lt;special &amp; characters&gt;"
+	if got := matrixToSlack(matrix); got != slack {
+		t.Errorf("matrixToSlack(%s): want %q got %q", matrix, slack, got)
+	}
+}
+
+func TestSlackToMatrix_TestUnescapesSpecialCharacters(t *testing.T) {
 	testSlackToMatrix(t, "&lt;special &amp; characters&gt;", "<special & characters>")
 }
 
-func SlackToMatrix_OneEmojum(t *testing.T) {
+func TestSlackToMatrix_OneEmojum(t *testing.T) {
 	testSlackToMatrix(t, ":wink:", "😉")
 }
 
-func SlackToMatrix_SeveralEmoji(t *testing.T) {
+func TestSlackToMatrix_SeveralEmoji(t *testing.T) {
 	testSlackToMatrix(t, ":wink::wink: :rugby_football:", "😉😉 🏉")
 }
 
-func SlackToMatrix_EmojiWithWhitespace(t *testing.T) {
+func TestSlackToMatrix_EmojiWithWhitespace(t *testing.T) {
 	testSlackToMatrix(t, ":win k:", ":win k:")
 }
 
-func SlackToMatrix_ImproperlyFormedEmoji(t *testing.T) {
+func TestSlackToMatrix_ImproperlyFormedEmoji(t *testing.T) {
 	testSlackToMatrix(t, ":k:wink:", ":k😉")
 }
 
-func SlackToMatrix_IgnoresUnknownEmoji(t *testing.T) {
-	testSlackToMatrix(t, ":golzillavodka:", ":godzillavodka:")
+func TestSlackToMatrix_IgnoresUnknownEmoji(t *testing.T) {
+	testSlackToMatrix(t, ":godzillavodka:", ":godzillavodka:")
 }
 
 func testSlackToMatrix(t *testing.T, slack, matrix string) {

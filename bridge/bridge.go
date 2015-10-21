@@ -47,7 +47,7 @@ func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 		log.Printf("Error unmarshaling room message content: %v", err)
 		return
 	}
-	if err := slackUser.Client.SendText(slackChannel, c.Body); err != nil {
+	if err := slackUser.Client.SendText(slackChannel, matrixToSlack(c.Body)); err != nil {
 		log.Printf("Error sending text to Slack: %v", err)
 	}
 }
