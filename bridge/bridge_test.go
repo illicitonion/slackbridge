@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"database/sql"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
@@ -27,7 +29,8 @@ func TestSlackMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
-	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +38,7 @@ func TestSlackMessage(t *testing.T) {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms, nil, http.Client{}}
+	bridge := Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
 	bridge.OnSlackMessage(slack.Message{
 		Type:    "message",
 		Channel: "CANTINA",
@@ -60,7 +63,8 @@ func TestMatrixMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
-	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +72,7 @@ func TestMatrixMessage(t *testing.T) {
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms, nil, http.Client{}}
+	bridge := Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "It's Nancy!"}`),
@@ -95,7 +99,8 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 
 	rooms.Link(matrixRoom, slackChannel)
 
-	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +109,8 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		slackChannel: []*slack.User{&slack.User{"someone", &MockSlackClient{}}},
 	}}
 
-	verify := func(req *http.Request) {
+	called := make(chan struct{}, 1)
+	verify := func(req *http.Request) string {
 		b, err := ioutil.ReadAll(req.Body)
 		if err != nil {
 			t.Fatalf("Error reading request body: %v", err)
@@ -118,17 +124,113 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		assertUrlValueEquals(t, v, "text", message)
 		assertUrlValueEquals(t, v, "as_user", "false")
 		assertUrlValueEquals(t, v, "username", matrixUser)
+		called <- struct{}{}
+		return ""
 	}
 	client := http.Client{
 		Transport: &spyRoundTripper{verify},
 	}
-	bridge := Bridge{users, rooms, slackRoomMembers, client}
+	bridge := Bridge{users, rooms, slackRoomMembers, client, echoSuppresser, Config{}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
-		Content: []byte(`{"msgtype": "m.text", "body": ` + message + `}`),
+		Content: []byte(`{"msgtype": "m.text", "body": "` + message + `"}`),
 		UserID:  matrixUser,
 		RoomID:  matrixRoom,
 	})
+
+	select {
+	case _ = <-called:
+		return
+	case _ = <-time.After(50 * time.Millisecond):
+		t.Fatalf("Didn't get expected call")
+	}
+}
+
+func TestSlackMessageFromUnlinkedUser(t *testing.T) {
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slackChannel := "BOWLINGALLEY"
+	matrixRoom := "!abc123:matrix.org"
+	message := "Shhhhh"
+	slackUser := "U123"
+	asToken := "abc123"
+
+	rooms.Link(matrixRoom, slackChannel)
+
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	slackRoomMembers := &slack.RoomMembers{map[string][]*slack.User{
+		slackChannel: []*slack.User{&slack.User{"someone", &MockSlackClient{}}},
+	}}
+
+	called := make(chan struct{}, 1)
+	didJoin := false
+	verify := func(req *http.Request) string {
+		if req.URL.Path == "/api/users.info" {
+			return `{"ok": true, "user": {"id": "` + slackUser + `", "name": "someoneonslack"}}`
+		}
+		if !didJoin && req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/join" {
+			didJoin = true
+			return ""
+		}
+		if req.URL.Path != "/_matrix/client/api/v1/rooms/"+matrixRoom+"/send/m.room.message" {
+			t.Fatalf("Got request to unexpected path %q", req.URL.Path)
+			return ""
+		}
+		if !didJoin {
+			t.Errorf("Didn't get expected join before message send")
+		}
+
+		query := req.URL.Query()
+		assertUrlValueEquals(t, query, "access_token", asToken)
+		assertUrlValueEquals(t, query, "user_id", "@prefix_someoneonslack:my.server")
+
+		b, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("Error reading request body: %v", err)
+		}
+		var content matrix.TextMessageContent
+		if err := json.Unmarshal(b, &content); err != nil {
+			t.Fatalf("Error unmarshaling json: %v", err)
+		}
+		if content.MsgType != "m.text" {
+			t.Errorf("Msgtype: want %q got %q", "m.text", content.MsgType)
+		}
+		if content.Body != message {
+			t.Errorf("Message: want %q got %q", message, content.Body)
+		}
+		called <- struct{}{}
+		return ""
+	}
+	client := http.Client{
+		Transport: &spyRoundTripper{verify},
+	}
+	bridge := Bridge{users, rooms, slackRoomMembers, client, echoSuppresser, Config{
+		MatrixASAccessToken: asToken,
+		UserPrefix:          "@prefix_",
+		HomeserverBaseURL:   "https://my.server",
+		HomeserverName:      "my.server",
+	}}
+	bridge.OnSlackMessage(slack.Message{
+		Type:    "message",
+		Channel: "BOWLINGALLEY",
+		TS:      "10",
+		User:    slackUser,
+		Text:    message,
+	})
+	select {
+	case _ = <-called:
+		return
+	case _ = <-time.After(50 * time.Millisecond):
+		t.Fatalf("Didn't get expected call")
+	}
 }
 
 func assertUrlValueEquals(t *testing.T, v url.Values, key, want string) {
@@ -180,7 +282,8 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatal(err)
 	}
 
-	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +296,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatalf("Error linking rooms: %v", err)
 	}
 
-	return &Bridge{users, rooms, nil, http.Client{}}
+	return &Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
 }
 
 type call struct {
@@ -232,13 +335,16 @@ func (m *MockSlackClient) AccessToken() string {
 }
 
 type spyRoundTripper struct {
-	fn func(*http.Request)
+	fn func(*http.Request) string
 }
 
 func (r *spyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.fn(req)
+	resp := r.fn(req)
+	if resp == "" {
+		resp = `{"ok": true}`
+	}
 	return &http.Response{
 		StatusCode: 200,
-		Body:       ioutil.NopCloser(strings.NewReader(`{"ok": true}`)),
+		Body:       ioutil.NopCloser(strings.NewReader(resp)),
 	}, nil
 }

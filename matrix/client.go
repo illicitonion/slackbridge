@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +23,17 @@ func AlwaysNotify(string) bool {
 func NewClient(accessToken string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
 	return &client{
 		accessToken:    accessToken,
+		asUser:         "",
+		client:         httpClient,
+		urlBase:        urlBase,
+		echoSuppresser: echoSuppresser,
+	}
+}
+
+func NewBotClient(accessToken, userID string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
+	return &client{
+		accessToken:    accessToken,
+		asUser:         userID,
 		client:         httpClient,
 		urlBase:        urlBase,
 		echoSuppresser: echoSuppresser,
@@ -30,6 +42,7 @@ func NewClient(accessToken string, httpClient http.Client, urlBase string, echoS
 
 type client struct {
 	accessToken    string
+	asUser         string
 	client         http.Client
 	urlBase        string
 	echoSuppresser *EchoSuppresser
@@ -50,7 +63,7 @@ func (c *client) Listen(cancel chan struct{}) {
 	ch := make(chan *http.Response)
 	var last string
 	for {
-		qs := "?access_token=" + c.accessToken
+		qs := c.querystring()
 		if last != "" {
 			qs += "&from=" + last
 		}
@@ -152,7 +165,7 @@ func (c *client) SendText(roomID, text string) error {
 		w.Close()
 	}()
 
-	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message?access_token=" + c.accessToken
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
 	resp, err := c.client.Post(url, "application/json", r)
 	if err != nil {
 		return fmt.Errorf("error from homeserver: %v", err)
@@ -172,6 +185,31 @@ func (c *client) SendText(roomID, text string) error {
 		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+func (c *client) JoinRoom(roomID string) error {
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/join" + c.querystring()
+	resp, err := c.client.Post(url, "application/json", strings.NewReader("{}"))
+	if err != nil {
+		return fmt.Errorf("error from homeserver: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response from homeserver: %v", err)
+		}
+		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+func (c *client) querystring() string {
+	qs := "?access_token=" + c.accessToken
+	if c.asUser != "" {
+		qs += "&user_id=" + c.asUser
+	}
+	return qs
 }
 
 type eventSendResponse struct {
