@@ -22,6 +22,7 @@ type Bridge struct {
 	UserMap          *UserMap
 	RoomMap          *RoomMap
 	SlackRoomMembers *slack.RoomMembers
+	MatrixUsers      *matrix.Users
 	Client           http.Client
 	EchoSuppresser   *matrix.EchoSuppresser
 	Config           Config
@@ -90,11 +91,11 @@ func (b *Bridge) botAccessToken(slackChannel string) string {
 }
 
 func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *matrix.User {
-	user := b.SlackRoomMembers.Any(slackChannel)
-	if user == nil {
+	slackUserInRoom := b.SlackRoomMembers.Any(slackChannel)
+	if slackUserInRoom == nil {
 		return nil
 	}
-	resp, err := b.Client.Get(fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", user.Client.AccessToken(), slackUserID))
+	resp, err := b.Client.Get(fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", slackUserInRoom.Client.AccessToken(), slackUserID))
 	if err != nil {
 		log.Printf("Error looking up user %q: %v", slackUserID, err)
 		return nil
@@ -110,13 +111,22 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 		log.Printf("Error unmarshaling user info response: %v (%s)", err, string(respBytes))
 		return nil
 	}
+
+	b.MatrixUsers.Mu.Lock()
 	matrixUserID := b.Config.UserPrefix + r.User.Name + ":" + b.Config.HomeserverName
-	client := matrix.NewBotClient(b.Config.MatrixASAccessToken, matrixUserID, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
-	if err := client.JoinRoom(matrixRoomID); err != nil {
+	user := b.MatrixUsers.Get_Locked(matrixUserID)
+	if user == nil {
+		client := matrix.NewBotClient(b.Config.MatrixASAccessToken, matrixUserID, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
+		user = &matrix.User{matrixUserID, client}
+		b.MatrixUsers.Save_Locked(user)
+	}
+	b.MatrixUsers.Mu.Unlock()
+
+	if err := user.Client.JoinRoom(matrixRoomID); err != nil {
 		log.Printf("Error joining room: %v", err)
 		return nil
 	}
-	return &matrix.User{matrixUserID, client}
+	return user
 }
 
 type slackUserInfoResponse struct {

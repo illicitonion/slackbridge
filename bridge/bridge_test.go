@@ -38,7 +38,7 @@ func TestSlackMessage(t *testing.T) {
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
+	bridge := Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{}}
 	bridge.OnSlackMessage(slack.Message{
 		Type:    "message",
 		Channel: "CANTINA",
@@ -72,7 +72,7 @@ func TestMatrixMessage(t *testing.T) {
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
-	bridge := Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
+	bridge := Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "It's Nancy!"}`),
@@ -129,7 +129,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 	client := http.Client{
 		Transport: &spyRoundTripper{verify},
 	}
-	bridge := Bridge{users, rooms, slackRoomMembers, client, echoSuppresser, Config{}}
+	bridge := Bridge{users, rooms, slackRoomMembers, nil, client, echoSuppresser, Config{}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "` + message + `"}`),
@@ -210,7 +210,8 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 	client := http.Client{
 		Transport: &spyRoundTripper{verify},
 	}
-	bridge := Bridge{users, rooms, slackRoomMembers, client, echoSuppresser, Config{
+	matrixUsers := matrix.NewUsers()
+	bridge := Bridge{users, rooms, slackRoomMembers, matrixUsers, client, echoSuppresser, Config{
 		MatrixASAccessToken: asToken,
 		UserPrefix:          "@prefix_",
 		HomeserverBaseURL:   "https://my.server",
@@ -294,7 +295,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatalf("Error linking rooms: %v", err)
 	}
 
-	return &Bridge{users, rooms, nil, http.Client{}, echoSuppresser, Config{}}
+	return &Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{}}
 }
 
 type call struct {
@@ -308,6 +309,11 @@ type MockMatrixClient struct {
 
 func (m *MockMatrixClient) SendText(roomID, text string) error {
 	m.calls = append(m.calls, call{"SendText", []interface{}{roomID, text}})
+	return nil
+}
+
+func (m *MockMatrixClient) JoinRoom(roomID string) error {
+	m.calls = append(m.calls, call{"JoinRoom", []interface{}{roomID}})
 	return nil
 }
 
