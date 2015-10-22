@@ -105,9 +105,8 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	slackRoomMembers := &slack.RoomMembers{map[string][]*slack.User{
-		slackChannel: []*slack.User{&slack.User{"someone", &MockSlackClient{}}},
-	}}
+	slackRoomMembers := slack.NewRoomMembers()
+	slackRoomMembers.Add(slackChannel, &slack.User{"someone", &MockSlackClient{}})
 
 	called := make(chan struct{}, 1)
 	verify := func(req *http.Request) string {
@@ -166,9 +165,8 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	slackRoomMembers := &slack.RoomMembers{map[string][]*slack.User{
-		slackChannel: []*slack.User{&slack.User{"someone", &MockSlackClient{}}},
-	}}
+	slackRoomMembers := slack.NewRoomMembers()
+	slackRoomMembers.Add(slackChannel, &slack.User{"someone", &MockSlackClient{}})
 
 	called := make(chan struct{}, 1)
 	didJoin := false
