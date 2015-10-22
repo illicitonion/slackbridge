@@ -117,14 +117,16 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 	user := b.MatrixUsers.Get_Locked(matrixUserID)
 	if user == nil {
 		client := matrix.NewBotClient(b.Config.MatrixASAccessToken, matrixUserID, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
-		user = &matrix.User{matrixUserID, client}
+		user = matrix.NewUser(matrixUserID, client)
 		b.MatrixUsers.Save_Locked(user)
 	}
 	b.MatrixUsers.Mu.Unlock()
 
-	if err := user.Client.JoinRoom(matrixRoomID); err != nil {
-		log.Printf("Error joining room: %v", err)
-		return nil
+	if !user.Rooms(false)[matrixRoomID] {
+		if err := user.JoinRoom(matrixRoomID); err != nil {
+			log.Printf("Error joining room: %v", err)
+			return nil
+		}
 	}
 	return user
 }

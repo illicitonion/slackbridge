@@ -29,7 +29,8 @@ func TestUserMapLoadsConfig(t *testing.T) {
 	}
 	matrixID := "@foo:somewhere.com"
 	slackID := "bar"
-	users.Link(&matrix.User{matrixID, &MockMatrixClient{}}, &slack.User{slackID, &MockSlackClient{}})
+	matrixUser := matrix.NewUser(matrixID, &MockMatrixClient{})
+	users.Link(matrixUser, &slack.User{slackID, &MockSlackClient{}})
 	db.Close()
 
 	db, err = sql.Open("sqlite3", file)

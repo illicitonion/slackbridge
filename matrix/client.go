@@ -204,6 +204,42 @@ func (c *client) JoinRoom(roomID string) error {
 	return nil
 }
 
+func (c *client) ListRooms() (map[string]bool, error) {
+	url := c.urlBase + pathPrefix + "/initialSync" + c.querystring() + "&limit=1"
+	resp, err := c.client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error from homeserver: %v", err)
+	}
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response from homeserver: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
+	}
+	var r initialSyncResponse
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("error unmarshaling initialSync response: %v", err)
+	}
+	rooms := make(map[string]bool)
+	for _, room := range r.Rooms {
+		if room.Membership == "join" {
+			rooms[room.RoomID] = true
+		}
+	}
+	return rooms, nil
+}
+
+type initialSyncResponse struct {
+	Rooms []initialSyncResponseRoom `json:"rooms"`
+}
+
+type initialSyncResponseRoom struct {
+	Membership string `json:"membership"`
+	RoomID     string `json:"room_id"`
+}
+
 func (c *client) querystring() string {
 	qs := "?access_token=" + c.accessToken
 	if c.asUser != "" {

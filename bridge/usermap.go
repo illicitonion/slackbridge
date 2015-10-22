@@ -43,7 +43,7 @@ func NewUserMap(db *sql.DB, httpClient http.Client, rooms *RoomMap, echoSuppress
 			continue
 		}
 		matrixClient := matrix.NewClient(matrixToken.String, httpClient, matrixHomeserver.String, m.echoSuppresser)
-		matrixUser := &matrix.User{matrixID, matrixClient}
+		matrixUser := matrix.NewUser(matrixID, matrixClient)
 
 		slackClient := slack.NewClient(slackToken.String, httpClient, rooms.ShouldNotify)
 		slackUser := &slack.User{slackID, slackClient}

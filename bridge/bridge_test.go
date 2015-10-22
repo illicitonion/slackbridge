@@ -9,6 +9,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestSlackMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
+	matrixUser := matrix.NewUser("@nancy:st.andrews", mockMatrixClient)
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
@@ -68,7 +69,7 @@ func TestMatrixMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matrixUser := &matrix.User{"@sean:st.andrews", mockMatrixClient}
+	matrixUser := matrix.NewUser("@sean:st.andrews", mockMatrixClient)
 	slackUser := &slack.User{"U35", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
@@ -168,21 +169,22 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 	slackRoomMembers := slack.NewRoomMembers()
 	slackRoomMembers.Add(slackChannel, &slack.User{"someone", &MockSlackClient{}})
 
-	called := make(chan struct{}, 1)
-	didJoin := false
+	calledTwice := make(chan struct{}, 1)
+	var joins int32
+	var calls int32
 	verify := func(req *http.Request) string {
 		if req.URL.Path == "/api/users.info" {
 			return `{"ok": true, "user": {"id": "` + slackUser + `", "name": "someoneonslack"}}`
 		}
-		if !didJoin && req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/join" {
-			didJoin = true
+		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/join" {
+			atomic.AddInt32(&joins, 1)
 			return ""
 		}
 		if req.URL.Path != "/_matrix/client/api/v1/rooms/"+matrixRoom+"/send/m.room.message" {
 			t.Fatalf("Got request to unexpected path %q", req.URL.Path)
 			return ""
 		}
-		if !didJoin {
+		if atomic.LoadInt32(&joins) == 0 {
 			t.Errorf("Didn't get expected join before message send")
 		}
 
@@ -204,7 +206,10 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 		if content.Body != message {
 			t.Errorf("Message: want %q got %q", message, content.Body)
 		}
-		called <- struct{}{}
+		callsAfter := atomic.AddInt32(&calls, 1)
+		if callsAfter == 2 {
+			calledTwice <- struct{}{}
+		}
 		return ""
 	}
 	client := http.Client{
@@ -224,11 +229,21 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 		User:    slackUser,
 		Text:    message,
 	})
+	bridge.OnSlackMessage(slack.Message{
+		Type:    "message",
+		Channel: "BOWLINGALLEY",
+		TS:      "11",
+		User:    slackUser,
+		Text:    message,
+	})
 	select {
-	case _ = <-called:
+	case _ = <-calledTwice:
+		if got := atomic.LoadInt32(&joins); got != 1 {
+			t.Errorf("join count: want: %d, got: %d", 1, got)
+		}
 		return
 	case _ = <-time.After(50 * time.Millisecond):
-		t.Fatalf("Didn't get expected call")
+		t.Fatalf("Didn't get expected calls")
 	}
 }
 
@@ -286,7 +301,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matrixUser := &matrix.User{"@nancy:st.andrews", mockMatrixClient}
+	matrixUser := matrix.NewUser("@nancy:st.andrews", mockMatrixClient)
 	slackUser := &slack.User{"U34", mockSlackClient}
 	users.Link(matrixUser, slackUser)
 
@@ -315,6 +330,10 @@ func (m *MockMatrixClient) SendText(roomID, text string) error {
 func (m *MockMatrixClient) JoinRoom(roomID string) error {
 	m.calls = append(m.calls, call{"JoinRoom", []interface{}{roomID}})
 	return nil
+}
+
+func (m *MockMatrixClient) ListRooms() (map[string]bool, error) {
+	return nil, nil
 }
 
 func (m *MockMatrixClient) AccessToken() string {
