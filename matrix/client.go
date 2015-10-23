@@ -158,22 +158,45 @@ func (c *client) SendText(roomID, text string) error {
 		MsgType: "m.text",
 	}
 
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
+	_, err := c.postEvent(url, message)
+	return err
+}
+
+func (c *client) SendImage(roomID, text string, image *Image) error {
+	// TODO: Upload image to media server
+
+	message := &ImageMessageContent{
+		Body:    text,
+		MsgType: "m.image",
+		URL:     image.URL,
+		Info:    image.Info,
+	}
+
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
+	_, err := c.postEvent(url, message)
+	return err
+}
+
+func (c *client) postEvent(url string, event interface{}) (*http.Response, error) {
 	r, w := io.Pipe()
 	go func() {
 		enc := json.NewEncoder(w)
-		enc.Encode(message)
+		enc.Encode(event)
 		w.Close()
 	}()
 
-	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
 	resp, err := c.client.Post(url, "application/json", r)
 	if err != nil {
-		return fmt.Errorf("error from homeserver: %v", err)
+		return nil, fmt.Errorf("error from homeserver: %v", err)
 	}
 	defer resp.Body.Close()
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response from homeserver: %v", err)
+		return resp, fmt.Errorf("error reading response from homeserver: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return resp, fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
 	}
 	var e eventSendResponse
 	if err := json.Unmarshal(b, &e); err != nil {
@@ -181,10 +204,7 @@ func (c *client) SendText(roomID, text string) error {
 	} else {
 		c.echoSuppresser.Sent(e.EventID)
 	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
-	}
-	return nil
+	return resp, nil
 }
 
 func (c *client) JoinRoom(roomID string) error {

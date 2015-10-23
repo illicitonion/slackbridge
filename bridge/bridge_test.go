@@ -53,6 +53,65 @@ func TestSlackMessage(t *testing.T) {
 	}
 }
 
+func TestSlackMessageWithImage(t *testing.T) {
+	mockMatrixClient := &MockMatrixClient{}
+	mockSlackClient := &MockSlackClient{}
+
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rooms.Link("!abc123:matrix.org", "CANTINA")
+
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := matrix.NewUser("@nancy:st.andrews", mockMatrixClient)
+	slackUser := &slack.User{"U34", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
+	bridge := Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{}}
+
+	imageURL := "https://slack-files.com/files-pub/T02TMLW97-F0D2M81QA-38528eaf47/otters.jpg"
+	bridge.OnSlackMessage(slack.Message{
+		Type:    "message",
+		Channel: "CANTINA",
+		User:    "U34",
+		Text:    "Cute otter",
+		File: &slack.File{
+			MIMEType:       "image/jpeg",
+			URL:            imageURL,
+			OriginalHeight: 768,
+			OriginalWidth:  1024,
+			Size:           90,
+			CommentsCount:  1,
+			InitialComment: &slack.Comment{
+				Comment: "omg",
+				User:    "U34",
+			},
+		},
+	})
+
+	want := []call{
+		call{"SendImage", []interface{}{"!abc123:matrix.org", "otters.jpg", matrix.Image{
+			URL: imageURL,
+			Info: &matrix.ImageInfo{
+				Width:    1024,
+				Height:   768,
+				MIMEType: "image/jpeg",
+				Size:     90,
+			},
+		}}},
+		call{"SendText", []interface{}{"!abc123:matrix.org", "omg"}},
+	}
+	if !reflect.DeepEqual(mockMatrixClient.calls, want) {
+		t.Fatalf("Wrong Matrix calls, want:\n%v\ngot:\n%v", want, mockMatrixClient.calls)
+	}
+}
+
 func TestMatrixMessage(t *testing.T) {
 	mockMatrixClient := &MockMatrixClient{}
 	mockSlackClient := &MockSlackClient{}
@@ -324,6 +383,11 @@ type MockMatrixClient struct {
 
 func (m *MockMatrixClient) SendText(roomID, text string) error {
 	m.calls = append(m.calls, call{"SendText", []interface{}{roomID, text}})
+	return nil
+}
+
+func (m *MockMatrixClient) SendImage(roomID, text string, image *matrix.Image) error {
+	m.calls = append(m.calls, call{"SendImage", []interface{}{roomID, text, *image}})
 	return nil
 }
 

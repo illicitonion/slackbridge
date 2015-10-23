@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
@@ -42,9 +44,41 @@ func (b *Bridge) OnSlackMessage(m slack.Message) {
 		log.Printf("Ignoring event from unknown slack user %q", m.User)
 		return
 	}
+
+	if m.File != nil {
+		if handled := b.handleSlackFile(m, matrixRoom, matrixUser); handled {
+			return
+		}
+	}
+
 	if err := matrixUser.Client.SendText(matrixRoom, slackToMatrix(m.Text)); err != nil {
 		log.Printf("Error sending text to Matrix: %v", err)
 	}
+}
+
+func (b *Bridge) handleSlackFile(m slack.Message, matrixRoom string, matrixUser *matrix.User) bool {
+	if !strings.HasPrefix(m.File.MIMEType, "image/") {
+		return false
+	}
+	matrixImage := &matrix.Image{
+		URL: m.File.URL,
+		Info: &matrix.ImageInfo{
+			Width:    m.File.OriginalWidth,
+			Height:   m.File.OriginalHeight,
+			MIMEType: m.File.MIMEType,
+			Size:     m.File.Size,
+		},
+	}
+	basename := path.Base(m.File.URL)
+	if err := matrixUser.Client.SendImage(matrixRoom, basename, matrixImage); err != nil {
+		log.Printf("Error sending image to Matrix: %v", err)
+	}
+	if m.File.CommentsCount == 1 && m.File.InitialComment != nil {
+		if err := matrixUser.Client.SendText(matrixRoom, slackToMatrix(m.File.InitialComment.Comment)); err != nil {
+			log.Printf("Error sending text to Matrix: %v", err)
+		}
+	}
+	return true
 }
 
 func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {

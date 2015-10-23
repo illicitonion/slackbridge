@@ -14,3 +14,17 @@ type TextMessageContent struct {
 	Body    string `json:"body"`
 	MsgType string `json:"msgtype"`
 }
+
+type ImageMessageContent struct {
+	Body    string     `json:"body"`
+	MsgType string     `json:"msgtype"`
+	URL     string     `json:"url"`
+	Info    *ImageInfo `json:"info"`
+}
+
+type ImageInfo struct {
+	Height   int    `json:"h"`
+	Width    int    `json:"w"`
+	MIMEType string `json:"mimetype"`
+	Size     int64  `json:"size"`
+}
