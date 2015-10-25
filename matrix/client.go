@@ -13,12 +13,6 @@ import (
 
 const pathPrefix = "/_matrix/client/api/v1"
 
-type MessageFilter func(string) bool
-
-func AlwaysNotify(string) bool {
-	return true
-}
-
 // urlBase: http(s)://host(:port)
 func NewClient(accessToken string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
 	return &client{
