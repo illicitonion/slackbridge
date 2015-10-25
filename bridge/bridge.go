@@ -100,9 +100,29 @@ func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 		log.Printf("Error unmarshaling room message content: %v", err)
 		return
 	}
+	if c.MsgType == "m.image" {
+		if err := b.handleMatrixImage(m, slackChannel, slackUser); err == nil {
+			return
+		} else {
+			log.Printf("Error sending image to slack: %v - falling back to text", err)
+		}
+	}
+
 	if err := slackUser.Client.SendText(slackChannel, matrixToSlack(c.Body)); err != nil {
 		log.Printf("Error sending text to Slack: %v", err)
 	}
+}
+
+func (b *Bridge) handleMatrixImage(m matrix.RoomMessage, slackChannel string, slackUser *slack.User) error {
+	var c matrix.ImageMessageContent
+	if err := json.Unmarshal(m.Content, &c); err != nil {
+		return fmt.Errorf("Error unmarshaling room message content: %v", err)
+	}
+	url := c.URL
+	if strings.HasPrefix(url, "mxc://") {
+		url = fmt.Sprintf("%s/_matrix/media/v1/download/%s", b.Config.HomeserverBaseURL, url[len("mxc://"):])
+	}
+	return slackUser.Client.SendImage(slackChannel, matrixToSlack(c.Body), url)
 }
 
 func (b *Bridge) slackUserFor(slackChannel, matrixUserID string) *slack.User {

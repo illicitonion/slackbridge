@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,29 @@ func TestIgnoresFilteredMessages(t *testing.T) {
 }
 
 func TestSendMessage(t *testing.T) {
+	text := "It's a grand gesture"
+	do := func(client Client) error {
+		return client.SendText("CANTINA", text)
+	}
+	verify := func(v url.Values) bool {
+		return v.Get("text") == text
+	}
+	testSendMessage(t, do, verify)
+}
+
+func TestSendImage(t *testing.T) {
+	text := "It's a grand gesture"
+	imageURL := "https://some.url/image.jpg"
+	do := func(client Client) error {
+		return client.SendImage("CANTINA", text, imageURL)
+	}
+	verify := func(v url.Values) bool {
+		return v.Get("fallback") == text && v.Get("image_url") == imageURL
+	}
+	testSendMessage(t, do, verify)
+}
+
+func testSendMessage(t *testing.T, do func(Client) error, verify func(url.Values) bool) {
 	called := false
 	client := NewClient("cynicism", http.Client{
 		Transport: &roundTripper{
@@ -94,18 +118,22 @@ func TestSendMessage(t *testing.T) {
 					log.Printf("Error parsing form: %v", err)
 					return false
 				}
-				return req.Form.Get("token") == "cynicism" &&
-					req.Form.Get("channel") == "CANTINA" &&
-					req.Form.Get("text") == "It's a grand gesture" &&
-					req.Form.Get("as_user") == "true"
+				if req.Form.Get("token") != "cynicism" ||
+					req.Form.Get("channel") != "CANTINA" ||
+					req.Form.Get("as_user") != "true" ||
+					!verify(req.Form) {
+					log.Printf("Got incorrect request: %v", req.Form)
+					return false
+				}
+				return true
 			},
 		},
 	}, AlwaysNotify)
-	if err := client.SendText("CANTINA", "It's a grand gesture"); err != nil {
-		t.Errorf("Error sending text: %v", err)
+	if err := do(client); err != nil {
+		t.Errorf("Error sending message: %v", err)
 	}
 	if !called {
-		t.Errorf("Expected HTTP request but got none")
+		t.Errorf("Expected HTTP request but got none or incorrect")
 	}
 }
 

@@ -115,9 +115,20 @@ func (c *client) OnMessage(h func(Message)) {
 // we will instead consistently use the HTTP API.
 func (c *client) SendText(channelID, text string) error {
 	v := url.Values{}
+	v.Set("text", text)
+	return c.sendMessage(channelID, v)
+}
+
+func (c *client) SendImage(channelID, fallbackText, imageURL string) error {
+	v := url.Values{}
+	v.Set("fallback", fallbackText)
+	v.Set("image_url", imageURL)
+	return c.sendMessage(channelID, v)
+}
+
+func (c *client) sendMessage(channelID string, v url.Values) error {
 	v.Set("token", c.token)
 	v.Set("channel", channelID)
-	v.Set("text", text)
 	if c.asUser == "" {
 		v.Set("as_user", "true")
 	} else {

@@ -56,6 +56,11 @@ func (m *MockSlackClient) SendText(channelID, text string) error {
 	return nil
 }
 
+func (m *MockSlackClient) SendImage(channelID, fallbackText, imageURL string) error {
+	m.calls = append(m.calls, call{"SendImage", []interface{}{channelID, fallbackText, imageURL}})
+	return nil
+}
+
 func (m *MockSlackClient) AccessToken() string {
 	return "slack_access_token"
 }

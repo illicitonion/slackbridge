@@ -145,6 +145,42 @@ func TestMatrixMessage(t *testing.T) {
 	}
 }
 
+func TestMatrixImageMessage(t *testing.T) {
+	mockMatrixClient := &MockMatrixClient{}
+	mockSlackClient := &MockSlackClient{}
+
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
+
+	echoSuppresser := matrix.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := matrix.NewUser("@sean:st.andrews", mockMatrixClient)
+	slackUser := &slack.User{"U35", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
+	bridge := Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{
+		HomeserverBaseURL: "https://some.url:1234",
+	}}
+	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
+		Type:    "m.room.message",
+		Content: []byte(`{"msgtype": "m.image", "body": "It's Nancy!", "url": "mxc://some.homeserver/abcDEF"}`),
+		UserID:  "@sean:st.andrews",
+		RoomID:  "!abc123:matrix.org",
+	})
+
+	want := []call{call{"SendImage", []interface{}{"BOWLINGALLEY", "It's Nancy!", "https://some.url:1234/_matrix/media/v1/download/some.homeserver/abcDEF"}}}
+	if !reflect.DeepEqual(mockSlackClient.calls, want) {
+		t.Fatalf("Wrong Slack calls, want %v got %v", want, mockSlackClient.calls)
+	}
+}
+
 func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 	db := makeDB(t)
 	rooms, err := NewRoomMap(db)
