@@ -3,9 +3,77 @@ package bridge
 import (
 	"database/sql"
 	"io/ioutil"
+	"net/http"
 	"path"
+	"strings"
 	"testing"
+
+	"github.com/matrix-org/slackbridge/matrix"
 )
+
+type call struct {
+	method string
+	args   []interface{}
+}
+
+type MockMatrixClient struct {
+	calls []call
+}
+
+func (m *MockMatrixClient) SendText(roomID, text string) error {
+	m.calls = append(m.calls, call{"SendText", []interface{}{roomID, text}})
+	return nil
+}
+
+func (m *MockMatrixClient) SendImage(roomID, text string, image *matrix.Image) error {
+	m.calls = append(m.calls, call{"SendImage", []interface{}{roomID, text, *image}})
+	return nil
+}
+
+func (m *MockMatrixClient) JoinRoom(roomID string) error {
+	m.calls = append(m.calls, call{"JoinRoom", []interface{}{roomID}})
+	return nil
+}
+
+func (m *MockMatrixClient) ListRooms() (map[string]bool, error) {
+	return nil, nil
+}
+
+func (m *MockMatrixClient) AccessToken() string {
+	return ""
+}
+
+func (m *MockMatrixClient) Homeserver() string {
+	return ""
+}
+
+type MockSlackClient struct {
+	calls []call
+}
+
+func (m *MockSlackClient) SendText(channelID, text string) error {
+	m.calls = append(m.calls, call{"SendText", []interface{}{channelID, text}})
+	return nil
+}
+
+func (m *MockSlackClient) AccessToken() string {
+	return "slack_access_token"
+}
+
+type spyRoundTripper struct {
+	fn func(*http.Request) string
+}
+
+func (r *spyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp := r.fn(req)
+	if resp == "" {
+		resp = `{"ok": true}`
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       ioutil.NopCloser(strings.NewReader(resp)),
+	}, nil
+}
 
 func makeDB(t *testing.T) *sql.DB {
 	dir, err := ioutil.TempDir("", "testdb")
