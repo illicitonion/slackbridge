@@ -39,6 +39,11 @@ func (m *MockMatrixClient) ListRooms() (map[string]bool, error) {
 	return nil, nil
 }
 
+func (m *MockMatrixClient) Invite(roomID, userID string) error {
+	m.calls = append(m.calls, call{"Invite", []interface{}{roomID, userID}})
+	return nil
+}
+
 func (m *MockMatrixClient) AccessToken() string {
 	return ""
 }

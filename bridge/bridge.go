@@ -177,12 +177,19 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 	b.MatrixUsers.Mu.Unlock()
 
 	if !user.Rooms(false)[matrixRoomID] {
+		if err := b.matrixBotClient().Invite(matrixRoomID, matrixUserID); err != nil {
+			log.Printf("Error inviting to room: %v", err)
+		}
 		if err := user.JoinRoom(matrixRoomID); err != nil {
 			log.Printf("Error joining room: %v", err)
 			return nil
 		}
 	}
 	return user
+}
+
+func (b *Bridge) matrixBotClient() matrix.Client {
+	return matrix.NewClient(b.Config.MatrixASAccessToken, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
 }
 
 type slackUserInfoResponse struct {

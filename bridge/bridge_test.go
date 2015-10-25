@@ -264,19 +264,29 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 	slackRoomMembers.Add(slackChannel, &slack.User{"someone", &MockSlackClient{}})
 
 	calledTwice := make(chan struct{}, 1)
+	var invites int32
 	var joins int32
 	var calls int32
 	verify := func(req *http.Request) string {
 		if req.URL.Path == "/api/users.info" {
 			return `{"ok": true, "user": {"id": "` + slackUser + `", "name": "someoneonslack"}}`
 		}
+
 		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/join" {
 			atomic.AddInt32(&joins, 1)
+			return ""
+		}
+		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/invite" {
+			atomic.AddInt32(&invites, 1)
 			return ""
 		}
 		if req.URL.Path != "/_matrix/client/api/v1/rooms/"+matrixRoom+"/send/m.room.message" {
 			t.Fatalf("Got request to unexpected path %q", req.URL.Path)
 			return ""
+		}
+
+		if atomic.LoadInt32(&invites) == 0 {
+			t.Errorf("Didn't get expected invite before message send")
 		}
 		if atomic.LoadInt32(&joins) == 0 {
 			t.Errorf("Didn't get expected join before message send")

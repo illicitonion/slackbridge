@@ -1,6 +1,7 @@
 package matrix
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -216,6 +217,31 @@ func (c *client) JoinRoom(roomID string) error {
 		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+func (c *client) Invite(roomID, userID string) error {
+	b, err := json.Marshal(inviteBody{userID})
+	if err != nil {
+		return err
+	}
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/invite" + c.querystring()
+	resp, err := c.client.Post(url, "application/json", bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("error from homeserver: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response from homeserver: %v", err)
+		}
+		return fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+type inviteBody struct {
+	UserID string `json:"user_id"`
 }
 
 func (c *client) ListRooms() (map[string]bool, error) {
