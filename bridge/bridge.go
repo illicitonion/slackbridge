@@ -167,6 +167,11 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 		return nil
 	}
 
+	if r.User == nil {
+		log.Printf("Ignoring slack message from non-slack user - probably our own Matrix bot")
+		return nil
+	}
+
 	b.MatrixUsers.Mu.Lock()
 	matrixUserID := b.Config.UserPrefix + r.User.Name + ":" + b.Config.HomeserverName
 	user := b.MatrixUsers.Get_Locked(matrixUserID)
