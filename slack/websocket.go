@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/matrix-org/slackbridge/common"
+
 	"golang.org/x/net/websocket"
 )
 
@@ -22,19 +24,21 @@ func AlwaysNotify(m *Message) bool {
 
 func NewClient(token string, c http.Client, messageFilter MessageFilter) *client {
 	return &client{
-		token:         token,
-		client:        c,
-		messageFilter: messageFilter,
-		asUser:        "",
+		token:          token,
+		client:         c,
+		messageFilter:  messageFilter,
+		asUser:         "",
+		echoSuppresser: common.NewEchoSuppresser(),
 	}
 }
 
 func NewBotClient(token, asUser string, c http.Client, messageFilter MessageFilter) *client {
 	return &client{
-		token:         token,
-		client:        c,
-		messageFilter: messageFilter,
-		asUser:        asUser,
+		token:          token,
+		client:         c,
+		messageFilter:  messageFilter,
+		asUser:         asUser,
+		echoSuppresser: common.NewEchoSuppresser(),
 	}
 }
 
@@ -78,7 +82,8 @@ func (c *client) Listen(cancel chan struct{}) error {
 				if err := json.Unmarshal(b, &m); err != nil {
 					log.Printf("Error unmarshaling websocket response: %v", err)
 				}
-				if !c.messageFilter(&m) {
+				c.echoSuppresser.Wait()
+				if !c.messageFilter(&m) || c.echoSuppresser.WasSent(m.TS) {
 					log.Printf("Skipping filtered message: %v", m)
 					continue
 				}
@@ -135,6 +140,8 @@ func (c *client) sendMessage(channelID string, v url.Values) error {
 		v.Set("as_user", "false")
 		v.Set("username", c.asUser)
 	}
+	c.echoSuppresser.StartSending()
+	defer c.echoSuppresser.DoneSending()
 	resp, err := c.client.PostForm("https://slack.com/api/chat.postMessage", v)
 	if err != nil {
 		return fmt.Errorf("error from slack: %v", err)
@@ -154,6 +161,7 @@ func (c *client) sendMessage(channelID string, v url.Values) error {
 	if !sr.OK {
 		return fmt.Errorf("error from slack: %s", string(b))
 	}
+	c.echoSuppresser.Sent(sr.TS)
 
 	return nil
 }
@@ -172,7 +180,8 @@ type client struct {
 	helloHandlers   []func(Hello)
 	messageHandlers []func(Message)
 
-	messageFilter MessageFilter
+	messageFilter  MessageFilter
+	echoSuppresser *common.EchoSuppresser
 }
 
 func (c *client) websocketURL() (string, error) {
@@ -211,5 +220,6 @@ type rtmStartResponse struct {
 }
 
 type slackResponse struct {
-	OK bool `json:"ok"`
+	OK bool   `json:"ok"`
+	TS string `json:"ts"`
 }

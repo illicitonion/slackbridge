@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/matrix-org/slackbridge/common"
 )
 
 const pathPrefix = "/_matrix/client/api/v1"
 
 // urlBase: http(s)://host(:port)
-func NewClient(accessToken string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
+func NewClient(accessToken string, httpClient http.Client, urlBase string, echoSuppresser *common.EchoSuppresser) *client {
 	return &client{
 		accessToken:    accessToken,
 		asUser:         "",
@@ -25,7 +27,7 @@ func NewClient(accessToken string, httpClient http.Client, urlBase string, echoS
 	}
 }
 
-func NewBotClient(accessToken, userID string, httpClient http.Client, urlBase string, echoSuppresser *EchoSuppresser) *client {
+func NewBotClient(accessToken, userID string, httpClient http.Client, urlBase string, echoSuppresser *common.EchoSuppresser) *client {
 	return &client{
 		accessToken:    accessToken,
 		asUser:         userID,
@@ -40,7 +42,7 @@ type client struct {
 	asUser         string
 	client         http.Client
 	urlBase        string
-	echoSuppresser *EchoSuppresser
+	echoSuppresser *common.EchoSuppresser
 
 	mu                  sync.Mutex
 	roomMessageHandlers []func(RoomMessage)
@@ -73,6 +75,7 @@ func (c *client) Listen(cancel chan struct{}) {
 			if resp == nil {
 				continue
 			}
+			c.echoSuppresser.Wait()
 			last = c.parseResponse(resp.Body)
 		case <-cancel:
 			if transport, ok := (c.client.Transport).(*http.Transport); ok {
@@ -181,6 +184,8 @@ func (c *client) postEvent(url string, event interface{}) (*http.Response, error
 		w.Close()
 	}()
 
+	c.echoSuppresser.StartSending()
+	defer c.echoSuppresser.DoneSending()
 	resp, err := c.client.Post(url, "application/json", r)
 	if err != nil {
 		return nil, fmt.Errorf("error from homeserver: %v", err)
@@ -197,6 +202,7 @@ func (c *client) postEvent(url string, event interface{}) (*http.Response, error
 	if err := json.Unmarshal(b, &e); err != nil {
 		log.Printf("Error unmarshaling event send response: %v (%s)", err, string(b))
 	} else {
+		log.Printf("Sent matrix event with ID: %s", e.EventID)
 		c.echoSuppresser.Sent(e.EventID)
 	}
 	return resp, nil
@@ -290,27 +296,4 @@ func (c *client) querystring() string {
 
 type eventSendResponse struct {
 	EventID string `json:"event_id"`
-}
-
-func NewEchoSuppresser() *EchoSuppresser {
-	return &EchoSuppresser{
-		sentEvents: make(map[string]bool),
-	}
-}
-
-type EchoSuppresser struct {
-	sentEvents map[string]bool // eventID -> didSend
-	mu         sync.RWMutex
-}
-
-func (s *EchoSuppresser) Sent(eventID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sentEvents[eventID] = true
-}
-
-func (s *EchoSuppresser) WasSent(eventID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.sentEvents[eventID]
 }

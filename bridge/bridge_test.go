@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matrix-org/slackbridge/common"
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 
@@ -29,7 +30,7 @@ func TestSlackMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestSlackMessageWithImage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "CANTINA")
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestMatrixMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +157,7 @@ func TestMatrixImageMessage(t *testing.T) {
 	}
 	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +195,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 
 	rooms.Link(matrixRoom, slackChannel)
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +255,7 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 
 	rooms.Link(matrixRoom, slackChannel)
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)
@@ -400,7 +401,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 		t.Fatal(err)
 	}
 
-	echoSuppresser := matrix.NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
 	if err != nil {
 		t.Fatal(err)

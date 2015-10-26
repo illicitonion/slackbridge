@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/matrix-org/slackbridge/common"
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 )
@@ -21,13 +22,13 @@ type Config struct {
 }
 
 type Bridge struct {
-	UserMap          *UserMap
-	RoomMap          *RoomMap
-	SlackRoomMembers *slack.RoomMembers
-	MatrixUsers      *matrix.Users
-	Client           http.Client
-	EchoSuppresser   *matrix.EchoSuppresser
-	Config           Config
+	UserMap              *UserMap
+	RoomMap              *RoomMap
+	SlackRoomMembers     *slack.RoomMembers
+	MatrixUsers          *matrix.Users
+	Client               http.Client
+	MatrixEchoSuppresser *common.EchoSuppresser
+	Config               Config
 }
 
 func (b *Bridge) OnSlackMessage(m slack.Message) {
@@ -170,7 +171,7 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 	matrixUserID := b.Config.UserPrefix + r.User.Name + ":" + b.Config.HomeserverName
 	user := b.MatrixUsers.Get_Locked(matrixUserID)
 	if user == nil {
-		client := matrix.NewBotClient(b.Config.MatrixASAccessToken, matrixUserID, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
+		client := matrix.NewBotClient(b.Config.MatrixASAccessToken, matrixUserID, b.Client, b.Config.HomeserverBaseURL, b.MatrixEchoSuppresser)
 		user = matrix.NewUser(matrixUserID, client)
 		b.MatrixUsers.Save_Locked(user)
 	}
@@ -189,7 +190,7 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 }
 
 func (b *Bridge) matrixBotClient() matrix.Client {
-	return matrix.NewClient(b.Config.MatrixASAccessToken, b.Client, b.Config.HomeserverBaseURL, b.EchoSuppresser)
+	return matrix.NewClient(b.Config.MatrixASAccessToken, b.Client, b.Config.HomeserverBaseURL, b.MatrixEchoSuppresser)
 }
 
 type slackUserInfoResponse struct {

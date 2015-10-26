@@ -7,6 +7,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/matrix-org/slackbridge/common"
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 	_ "github.com/mattn/go-sqlite3"
@@ -23,7 +24,7 @@ func TestUserMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	users, err := NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	users, err := NewUserMap(db, http.Client{}, rooms, common.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +42,7 @@ func TestUserMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	users, err = NewUserMap(db, http.Client{}, rooms, matrix.NewEchoSuppresser())
+	users, err = NewUserMap(db, http.Client{}, rooms, common.NewEchoSuppresser())
 	if err != nil {
 		t.Fatal(err)
 	}

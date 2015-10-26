@@ -7,16 +7,17 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/matrix-org/slackbridge/common"
 	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 )
 
-func NewUserMap(db *sql.DB, httpClient http.Client, rooms *RoomMap, echoSuppresser *matrix.EchoSuppresser) (*UserMap, error) {
+func NewUserMap(db *sql.DB, httpClient http.Client, rooms *RoomMap, matrixEchoSuppresser *common.EchoSuppresser) (*UserMap, error) {
 	m := &UserMap{
-		matrixToSlack:  make(map[string]*slack.User),
-		slackToMatrix:  make(map[string]*matrix.User),
-		db:             db,
-		echoSuppresser: echoSuppresser,
+		matrixToSlack:        make(map[string]*slack.User),
+		slackToMatrix:        make(map[string]*matrix.User),
+		db:                   db,
+		matrixEchoSuppresser: matrixEchoSuppresser,
 	}
 
 	rows, err := db.Query("SELECT id, slack_user_id, slack_access_token, matrix_user_id, matrix_access_token, matrix_homeserver FROM users ORDER BY id ASC")
@@ -42,7 +43,7 @@ func NewUserMap(db *sql.DB, httpClient http.Client, rooms *RoomMap, echoSuppress
 			log.Printf("Skipping user matrix:%q = slack:%q because no slack token", matrixID, slackID)
 			continue
 		}
-		matrixClient := matrix.NewClient(matrixToken.String, httpClient, matrixHomeserver.String, m.echoSuppresser)
+		matrixClient := matrix.NewClient(matrixToken.String, httpClient, matrixHomeserver.String, m.matrixEchoSuppresser)
 		matrixUser := matrix.NewUser(matrixID, matrixClient)
 
 		slackClient := slack.NewClient(slackToken.String, httpClient, rooms.ShouldNotify)
@@ -94,9 +95,9 @@ func (u *UserMap) Link(m *matrix.User, s *slack.User) error {
 }
 
 type UserMap struct {
-	mu             sync.RWMutex
-	matrixToSlack  map[string]*slack.User
-	slackToMatrix  map[string]*matrix.User
-	echoSuppresser *matrix.EchoSuppresser
-	db             *sql.DB
+	mu                   sync.RWMutex
+	matrixToSlack        map[string]*slack.User
+	slackToMatrix        map[string]*matrix.User
+	matrixEchoSuppresser *common.EchoSuppresser
+	db                   *sql.DB
 }

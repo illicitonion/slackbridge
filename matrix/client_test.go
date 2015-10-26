@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/matrix-org/slackbridge/common"
 )
 
 func TestSendTextMessage(t *testing.T) {
@@ -20,7 +22,7 @@ func TestSendTextMessage(t *testing.T) {
 		return true
 	}})
 	defer s.Close()
-	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, NewEchoSuppresser())
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, common.NewEchoSuppresser())
 	c.SendText("!undertheclock:waterloo.station", "quid pro quo")
 	if got := atomic.LoadInt32(&called); got != 1 {
 		t.Fatalf("Didn't get expected HTTP request, got: %d", got)
@@ -28,7 +30,7 @@ func TestSendTextMessage(t *testing.T) {
 }
 
 func TestListenOneRoomMessage(t *testing.T) {
-	listenTest(t, NewEchoSuppresser(), func(called chan struct{}) {
+	listenTest(t, common.NewEchoSuppresser(), func(called chan struct{}) {
 		select {
 		case _ = <-called:
 			return
@@ -39,7 +41,7 @@ func TestListenOneRoomMessage(t *testing.T) {
 }
 
 func TestSuppressEcho(t *testing.T) {
-	echoSuppresser := NewEchoSuppresser()
+	echoSuppresser := common.NewEchoSuppresser()
 	echoSuppresser.Sent("abc123:some.server")
 	listenTest(t, echoSuppresser, func(called chan struct{}) {
 		select {
@@ -51,7 +53,7 @@ func TestSuppressEcho(t *testing.T) {
 	})
 }
 
-func listenTest(t *testing.T, echoSuppresser *EchoSuppresser, verify func(chan struct{})) {
+func listenTest(t *testing.T, echoSuppresser *common.EchoSuppresser, verify func(chan struct{})) {
 	s := httptest.NewServer(&stubHandler{`{
 	"chunk": [{
 	  "content": {
