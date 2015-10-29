@@ -46,6 +46,12 @@ func (b *Bridge) OnSlackMessage(m slack.Message) {
 		return
 	}
 
+	if m.Subtype == "me_message" {
+		if err := matrixUser.Client.SendEmote(matrixRoom, slackToMatrix(m.Text)); err != nil {
+			log.Printf("Error sending emote to Matrix: %v", err)
+		}
+		return
+	}
 	if m.File != nil {
 		if handled := b.handleSlackFile(m, matrixRoom, matrixUser); handled {
 			return

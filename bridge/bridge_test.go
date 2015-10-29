@@ -53,6 +53,41 @@ func TestSlackMessage(t *testing.T) {
 	}
 }
 
+func TestSlackMeMessage(t *testing.T) {
+	mockMatrixClient := &MockMatrixClient{}
+	mockSlackClient := &MockSlackClient{}
+
+	db := makeDB(t)
+	rooms, err := NewRoomMap(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rooms.Link("!abc123:matrix.org", "CANTINA")
+
+	echoSuppresser := common.NewEchoSuppresser()
+	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixUser := matrix.NewUser("@nancy:st.andrews", mockMatrixClient)
+	slackUser := &slack.User{"U34", mockSlackClient}
+	users.Link(matrixUser, slackUser)
+
+	bridge := Bridge{users, rooms, nil, nil, http.Client{}, echoSuppresser, Config{}}
+	bridge.OnSlackMessage(slack.Message{
+		Type:    "message",
+		Channel: "CANTINA",
+		User:    "U34",
+		Subtype: "me_message",
+		Text:    "takes more chances",
+	})
+
+	want := []call{call{"SendEmote", []interface{}{"!abc123:matrix.org", "takes more chances"}}}
+	if !reflect.DeepEqual(mockMatrixClient.calls, want) {
+		t.Fatalf("Wrong Matrix calls, want %v got %v", want, mockMatrixClient.calls)
+	}
+}
+
 func TestSlackMessageWithImage(t *testing.T) {
 	mockMatrixClient := &MockMatrixClient{}
 	mockSlackClient := &MockSlackClient{}

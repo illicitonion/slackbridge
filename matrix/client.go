@@ -157,8 +157,7 @@ func (c *client) SendText(roomID, text string) error {
 		MsgType: "m.text",
 	}
 
-	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
-	_, err := c.postEvent(url, message)
+	_, err := c.postEvent(roomID, message)
 	return err
 }
 
@@ -175,8 +174,17 @@ func (c *client) SendImage(roomID, text string, image *Image) error {
 		Info:    image.Info,
 	}
 
-	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
-	_, err = c.postEvent(url, message)
+	_, err = c.postEvent(roomID, message)
+	return err
+}
+
+func (c *client) SendEmote(roomID, emote string) error {
+	message := &TextMessageContent{
+		Body:    emote,
+		MsgType: "m.emote",
+	}
+
+	_, err := c.postEvent(roomID, message)
 	return err
 }
 
@@ -232,7 +240,7 @@ type uploadResponse struct {
 	ContentURI string `json:"content_uri"`
 }
 
-func (c *client) postEvent(url string, event interface{}) (*http.Response, error) {
+func (c *client) postEvent(roomID string, event interface{}) (*http.Response, error) {
 	r, w := io.Pipe()
 	go func() {
 		enc := json.NewEncoder(w)
@@ -242,6 +250,8 @@ func (c *client) postEvent(url string, event interface{}) (*http.Response, error
 
 	c.echoSuppresser.StartSending()
 	defer c.echoSuppresser.DoneSending()
+
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
 	resp, err := c.client.Post(url, "application/json", r)
 	if err != nil {
 		return nil, fmt.Errorf("error from homeserver: %v", err)

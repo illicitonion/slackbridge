@@ -25,6 +25,11 @@ func (m *MockMatrixClient) SendText(roomID, text string) error {
 	return nil
 }
 
+func (m *MockMatrixClient) SendEmote(roomID, emote string) error {
+	m.calls = append(m.calls, call{"SendEmote", []interface{}{roomID, emote}})
+	return nil
+}
+
 func (m *MockMatrixClient) SendImage(roomID, text string, image *matrix.Image) error {
 	m.calls = append(m.calls, call{"SendImage", []interface{}{roomID, text, *image}})
 	return nil

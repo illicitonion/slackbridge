@@ -1,7 +1,9 @@
 package matrix
 
 import (
+	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -18,12 +20,41 @@ func TestSendTextMessage(t *testing.T) {
 		if req.URL.String() != "/_matrix/client/api/v1/rooms/%21undertheclock:waterloo.station/send/m.room.message?access_token=6000000000peopleandyou" {
 			return false
 		}
-		// Should probaby test the body too...
-		return true
+		dec := json.NewDecoder(req.Body)
+		var c TextMessageContent
+		if err := dec.Decode(&c); err != nil {
+			log.Printf("Error decoding json: %v", err)
+			return false
+		}
+		return c.Body == "quid pro quo" && c.MsgType == "m.text"
 	}})
 	defer s.Close()
 	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, common.NewEchoSuppresser())
 	c.SendText("!undertheclock:waterloo.station", "quid pro quo")
+	if got := atomic.LoadInt32(&called); got != 1 {
+		t.Fatalf("Didn't get expected HTTP request, got: %d", got)
+	}
+}
+
+func TestSendEmoteMessage(t *testing.T) {
+	var called int32
+	s := httptest.NewServer(&handler{t, &called, func(req *http.Request) bool {
+		// I don't know why Go chooses to escape the ! but not the : even though url.QueryEscape escapes both of them
+		if req.URL.String() != "/_matrix/client/api/v1/rooms/%21undertheclock:waterloo.station/send/m.room.message?access_token=6000000000peopleandyou" {
+			return false
+		}
+		dec := json.NewDecoder(req.Body)
+		var c TextMessageContent
+		if err := dec.Decode(&c); err != nil {
+			log.Printf("Error decoding json: %v", err)
+			return false
+		}
+		// Should probaby test the body too...
+		return c.Body == "puts the fire out" && c.MsgType == "m.emote"
+	}})
+	defer s.Close()
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, common.NewEchoSuppresser())
+	c.SendEmote("!undertheclock:waterloo.station", "puts the fire out")
 	if got := atomic.LoadInt32(&called); got != 1 {
 		t.Fatalf("Didn't get expected HTTP request, got: %d", got)
 	}
