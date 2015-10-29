@@ -189,6 +189,9 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 	b.MatrixUsers.Mu.Unlock()
 
 	if !user.Rooms(false)[matrixRoomID] {
+		if err := b.matrixBotClient().JoinRoom(matrixRoomID); err != nil {
+			log.Printf("Error joining bot to room: %v", err)
+		}
 		if err := b.matrixBotClient().Invite(matrixRoomID, matrixUserID); err != nil {
 			log.Printf("Error inviting to room: %v", err)
 		}
