@@ -6,6 +6,7 @@ type Client interface {
 	SendEmote(matrixRoom, emote string) error
 	JoinRoom(roomID string) error
 	ListRooms() (map[string]bool, error)
+	GetRoomMembers(roomID string) (map[string]UserInfo, error)
 	Invite(roomID, userID string) error
 
 	Homeserver() string
@@ -15,4 +16,10 @@ type Client interface {
 type Image struct {
 	URL  string
 	Info *ImageInfo
+}
+
+type UserInfo struct {
+	AvatarURL   string `json:"avatar_url"`
+	DisplayName string `json:"displayname"`
+	Membership  string `json:"membership"`
 }

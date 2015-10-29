@@ -224,9 +224,12 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	slackChannel := "BOWLINGALLEY"
-	matrixRoom := matrix.NewRoom("!abc123:matrix.org")
 	message := "It's Nancy!"
 	matrixUser := "@sean:st.andrews"
+	matrixRoom := matrix.NewRoom("!abc123:matrix.org")
+	matrixRoom.Users[matrixUser] = matrix.UserInfo{
+		AvatarURL: "mxc://st.andrews/sean.jpg",
+	}
 
 	rooms.Link(matrixRoom, slackChannel)
 
@@ -254,13 +257,16 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		assertUrlValueEquals(t, v, "text", message)
 		assertUrlValueEquals(t, v, "as_user", "false")
 		assertUrlValueEquals(t, v, "username", matrixUser)
+		assertUrlValueEquals(t, v, "icon_url", "https://hs.url/_matrix/media/v1/download/st.andrews/sean.jpg")
 		called <- struct{}{}
 		return ""
 	}
 	client := http.Client{
 		Transport: &spyRoundTripper{verify},
 	}
-	bridge := Bridge{users, rooms, slackRoomMembers, nil, client, echoSuppresser, Config{}}
+	bridge := Bridge{users, rooms, slackRoomMembers, nil, client, echoSuppresser, Config{
+		HomeserverBaseURL: "https://hs.url",
+	}}
 	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "` + message + `"}`),

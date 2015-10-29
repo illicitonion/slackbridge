@@ -32,12 +32,14 @@ func NewClient(token string, c http.Client, messageFilter MessageFilter) *client
 	}
 }
 
-func NewBotClient(token, asUser string, c http.Client, messageFilter MessageFilter) *client {
+func NewBotClient(token, asUser, displayName, avatarURL string, c http.Client, messageFilter MessageFilter) *client {
 	return &client{
 		token:          token,
 		client:         c,
 		messageFilter:  messageFilter,
 		asUser:         asUser,
+		displayName:    displayName,
+		avatarURL:      avatarURL,
 		echoSuppresser: common.NewEchoSuppresser(),
 	}
 }
@@ -146,7 +148,14 @@ func (c *client) sendMessage(channelID string, v url.Values) error {
 		v.Set("as_user", "true")
 	} else {
 		v.Set("as_user", "false")
-		v.Set("username", c.asUser)
+		if c.displayName == "" {
+			v.Set("username", c.asUser)
+		} else {
+			v.Set("username", c.displayName)
+		}
+		if c.avatarURL != "" {
+			v.Set("icon_url", c.avatarURL)
+		}
 	}
 	c.echoSuppresser.StartSending()
 	defer c.echoSuppresser.DoneSending()
@@ -179,10 +188,12 @@ func (c *client) AccessToken() string {
 }
 
 type client struct {
-	token  string
-	asUser string
-	client http.Client
-	ws     *websocket.Conn
+	token       string
+	asUser      string
+	displayName string
+	avatarURL   string
+	client      http.Client
+	ws          *websocket.Conn
 
 	mu              sync.Mutex
 	helloHandlers   []func(Hello)

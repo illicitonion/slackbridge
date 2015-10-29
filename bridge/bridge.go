@@ -125,11 +125,7 @@ func (b *Bridge) handleMatrixImage(m matrix.RoomMessage, slackChannel string, sl
 	if err := json.Unmarshal(m.Content, &c); err != nil {
 		return fmt.Errorf("Error unmarshaling room message content: %v", err)
 	}
-	url := c.URL
-	if strings.HasPrefix(url, "mxc://") {
-		url = fmt.Sprintf("%s/_matrix/media/v1/download/%s", b.Config.HomeserverBaseURL, url[len("mxc://"):])
-	}
-	return slackUser.Client.SendImage(slackChannel, matrixToSlack(c.Body), url)
+	return slackUser.Client.SendImage(slackChannel, matrixToSlack(c.Body), b.mxcToHTTPS(c.URL))
 }
 
 func (b *Bridge) slackUserFor(slackChannel, matrixUserID string) *slack.User {
@@ -137,7 +133,17 @@ func (b *Bridge) slackUserFor(slackChannel, matrixUserID string) *slack.User {
 	if token == "" {
 		return nil
 	}
-	client := slack.NewBotClient(token, matrixUserID, b.Client, b.RoomMap.ShouldNotify)
+
+	var iconURL string
+	var displayName string
+	matrixRoom := b.RoomMap.MatrixForSlack(slackChannel)
+	if matrixRoom != nil {
+		userInfo := matrixRoom.Users[matrixUserID]
+		iconURL = b.mxcToHTTPS(userInfo.AvatarURL)
+		displayName = userInfo.DisplayName
+	}
+
+	client := slack.NewBotClient(token, matrixUserID, displayName, iconURL, b.Client, b.RoomMap.ShouldNotify)
 	user := &slack.User{matrixUserID, client}
 	b.SlackRoomMembers.Add(slackChannel, user)
 	return user
@@ -149,6 +155,13 @@ func (b *Bridge) botAccessToken(slackChannel string) string {
 		return ""
 	}
 	return user.Client.AccessToken()
+}
+
+func (b *Bridge) mxcToHTTPS(url string) string {
+	if !strings.HasPrefix(url, "mxc://") {
+		return url
+	}
+	return fmt.Sprintf("%s/_matrix/media/v1/download/%s", b.Config.HomeserverBaseURL, url[len("mxc://"):])
 }
 
 func (b *Bridge) matrixUserFor(slackChannel, slackUserID string, matrixRoom *matrix.Room) *matrix.User {

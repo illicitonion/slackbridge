@@ -28,3 +28,9 @@ type ImageInfo struct {
 	MIMEType string `json:"mimetype"`
 	Size     int64  `json:"size"`
 }
+
+type StateEvent struct {
+	Content  json.RawMessage `json:"content"`
+	Type     string          `json:"type"`
+	StateKey string          `json:"state_key"`
+}

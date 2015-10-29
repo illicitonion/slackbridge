@@ -352,6 +352,41 @@ type initialSyncResponseRoom struct {
 	RoomID     string `json:"room_id"`
 }
 
+func (c *client) GetRoomMembers(roomID string) (map[string]UserInfo, error) {
+	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/state" + c.querystring()
+	resp, err := c.client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error from homeserver: %v", err)
+	}
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response from homeserver: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error from homeserver: %d: %s", resp.StatusCode, string(b))
+	}
+	var r []StateEvent
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("error unmarshaling room state response: %v", err)
+	}
+	users := make(map[string]UserInfo)
+	for _, event := range r {
+		if event.Type != "m.room.member" {
+			continue
+		}
+		var ui UserInfo
+		if err := json.Unmarshal(event.Content, &ui); err != nil {
+			return nil, fmt.Errorf("error unmarshaling room state content: %v", err)
+		}
+		if ui.Membership == "join" {
+			users[event.StateKey] = ui
+		}
+	}
+	return users, nil
+
+}
+
 func (c *client) querystring() string {
 	qs := "?access_token=" + c.accessToken
 	if c.asUser != "" {
