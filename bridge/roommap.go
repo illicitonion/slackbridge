@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 )
 
 func NewRoomMap(db *sql.DB) (*RoomMap, error) {
 	m := &RoomMap{
 		matrixToSlack: make(map[string]string),
-		slackToMatrix: make(map[string]string),
+		slackToMatrix: make(map[string]*matrix.Room),
 		rows:          make(map[string]*entry),
 
 		/*
@@ -34,11 +35,12 @@ func NewRoomMap(db *sql.DB) (*RoomMap, error) {
 	for rows.Next() {
 		var id int32
 		var slack string
-		var matrix string
-		if err := rows.Scan(&id, &slack, &matrix); err != nil {
+		var matrixID string
+		if err := rows.Scan(&id, &slack, &matrixID); err != nil {
 			return nil, err
 		}
-		if err := m.Link(matrix, slack); err != nil {
+		matrixRoom := matrix.NewRoom(matrixID)
+		if err := m.Link(matrixRoom, slack); err != nil {
 			return nil, err
 		}
 	}
@@ -48,7 +50,7 @@ func NewRoomMap(db *sql.DB) (*RoomMap, error) {
 	return m, nil
 }
 
-func (m *RoomMap) MatrixForSlack(slack string) string {
+func (m *RoomMap) MatrixForSlack(slack string) *matrix.Room {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.slackToMatrix[slack]
@@ -60,26 +62,32 @@ func (m *RoomMap) SlackForMatrix(matrix string) string {
 	return m.matrixToSlack[matrix]
 }
 
-func (m *RoomMap) Link(matrix, slack string) error {
+func (m *RoomMap) Link(matrix *matrix.Room, slack string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.matrixToSlack[matrix] = slack
+	m.matrixToSlack[matrix.ID] = slack
 	m.slackToMatrix[slack] = matrix
-	row, ok := m.rows[matrix]
+	row, ok := m.rows[matrix.ID]
 	if !ok {
-		row = &entry{}
-		m.rows[matrix] = row
+		row = &entry{
+			MatrixRoom: matrix,
+		}
+		m.rows[matrix.ID] = row
 	}
-	dbRow := m.db.QueryRow(`SELECT id, slack_channel_id, matrix_room_id, last_slack_timestamp, last_matrix_stream_token FROM rooms WHERE slack_channel_id == $1 AND matrix_room_id == $2`, slack, matrix)
-	scanErr := dbRow.Scan(&row.id, &row.SlackChannelID, &row.MatrixRoomID, &row.LastSlackTimestampS, &row.LastMatrixStreamToken)
+	var lastMatrixStreamToken sql.NullString
+	dbRow := m.db.QueryRow(`SELECT id, slack_channel_id, matrix_room_id, last_slack_timestamp, last_matrix_stream_token FROM rooms WHERE slack_channel_id == $1 AND matrix_room_id == $2`, slack, matrix.ID)
+	scanErr := dbRow.Scan(&row.id, &row.SlackChannelID, &row.MatrixRoom.ID, &row.LastSlackTimestampS, &lastMatrixStreamToken)
 	if scanErr == sql.ErrNoRows {
 		log.Printf("Writing matrix room %q to table", matrix)
-		if _, err := m.db.Exec(`INSERT INTO rooms (slack_channel_id, matrix_room_id) VALUES ($1, $2)`, slack, matrix); err != nil {
+		if _, err := m.db.Exec(`INSERT INTO rooms (slack_channel_id, matrix_room_id) VALUES ($1, $2)`, slack, matrix.ID); err != nil {
 			return fmt.Errorf("error writing to db: %v", err)
 		}
 	} else if scanErr != nil {
 		return fmt.Errorf("error reading from db: %v", scanErr)
 	} else {
+		if lastMatrixStreamToken.Valid {
+			row.MatrixRoom.LastStreamToken = lastMatrixStreamToken.String
+		}
 		log.Printf("Loaded row: %v", row)
 	}
 	return nil
@@ -88,8 +96,11 @@ func (m *RoomMap) Link(matrix, slack string) error {
 func (m *RoomMap) ShouldNotify(message *slack.Message) bool {
 	log.Printf("Got call to shouldNotify for: %v", message)
 	matrix := m.MatrixForSlack(message.Channel)
+	if matrix == nil {
+		return false
+	}
 	m.mu.RLock()
-	row, ok := m.rows[matrix]
+	row, ok := m.rows[matrix.ID]
 	m.mu.RUnlock()
 	if !ok {
 		return false
@@ -102,7 +113,7 @@ func (m *RoomMap) ShouldNotify(message *slack.Message) bool {
 		return false
 	}
 
-	if _, err := m.db.Exec(`UPDATE rooms SET last_slack_timestamp = $1 WHERE slack_channel_id == $2 AND matrix_room_id == $3`, message.TS, message.Channel, matrix); err != nil {
+	if _, err := m.db.Exec(`UPDATE rooms SET last_slack_timestamp = $1 WHERE slack_channel_id == $2 AND matrix_room_id == $3`, message.TS, message.Channel, matrix.ID); err != nil {
 		log.Printf("Error updating DB for new Slack message: %v", err)
 	}
 	row.LastSlackTimestampS = sql.NullString{message.TS, true}
@@ -112,7 +123,7 @@ func (m *RoomMap) ShouldNotify(message *slack.Message) bool {
 type RoomMap struct {
 	mu            sync.RWMutex
 	matrixToSlack map[string]string
-	slackToMatrix map[string]string
+	slackToMatrix map[string]*matrix.Room
 	db            *sql.DB
 
 	// matrix room ID -> mutex
@@ -120,12 +131,11 @@ type RoomMap struct {
 }
 
 type entry struct {
-	mu                    sync.RWMutex
-	id                    int32
-	SlackChannelID        string
-	MatrixRoomID          string
-	LastSlackTimestampS   sql.NullString
-	LastMatrixStreamToken sql.NullString
+	mu                  sync.RWMutex
+	id                  int32
+	SlackChannelID      string
+	LastSlackTimestampS sql.NullString
+	MatrixRoom          *matrix.Room
 }
 
 func (e *entry) LastSlackTimestamp() float64 {

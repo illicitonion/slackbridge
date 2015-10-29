@@ -6,6 +6,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/matrix-org/slackbridge/matrix"
 	"github.com/matrix-org/slackbridge/slack"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -30,7 +31,7 @@ func TestSlackMessageFilter(t *testing.T) {
 		t.Fatalf("not linked: should have skipped")
 	}
 
-	rooms.Link("!abc123:matrix.org", "CANTINA")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "CANTINA")
 
 	if !receive("1") {
 		t.Fatalf("should have notified")
@@ -56,9 +57,9 @@ func TestRoomMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matrix := "foo"
+	matrixRoomID := "foo"
 	slack := "bar"
-	rooms.Link(matrix, slack)
+	rooms.Link(matrix.NewRoom(matrixRoomID), slack)
 	db.Close()
 
 	db, err = sql.Open("sqlite3", file)
@@ -69,7 +70,7 @@ func TestRoomMapLoadsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rooms.SlackForMatrix(matrix); got != slack {
+	if got := rooms.SlackForMatrix(matrixRoomID); got != slack {
 		t.Errorf("want %q got %q", slack, got)
 	}
 }

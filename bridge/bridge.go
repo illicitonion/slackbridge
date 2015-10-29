@@ -33,7 +33,7 @@ type Bridge struct {
 
 func (b *Bridge) OnSlackMessage(m slack.Message) {
 	matrixRoom := b.RoomMap.MatrixForSlack(m.Channel)
-	if matrixRoom == "" {
+	if matrixRoom == nil {
 		log.Printf("Ignoring event for unknown slack room %q", m.Channel)
 		return
 	}
@@ -47,18 +47,18 @@ func (b *Bridge) OnSlackMessage(m slack.Message) {
 	}
 
 	if m.Subtype == "me_message" {
-		if err := matrixUser.Client.SendEmote(matrixRoom, slackToMatrix(m.Text)); err != nil {
+		if err := matrixUser.Client.SendEmote(matrixRoom.ID, slackToMatrix(m.Text)); err != nil {
 			log.Printf("Error sending emote to Matrix: %v", err)
 		}
 		return
 	}
 	if m.File != nil {
-		if handled := b.handleSlackFile(m, matrixRoom, matrixUser); handled {
+		if handled := b.handleSlackFile(m, matrixRoom.ID, matrixUser); handled {
 			return
 		}
 	}
 
-	if err := matrixUser.Client.SendText(matrixRoom, slackToMatrix(m.Text)); err != nil {
+	if err := matrixUser.Client.SendText(matrixRoom.ID, slackToMatrix(m.Text)); err != nil {
 		log.Printf("Error sending text to Matrix: %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func (b *Bridge) botAccessToken(slackChannel string) string {
 	return user.Client.AccessToken()
 }
 
-func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *matrix.User {
+func (b *Bridge) matrixUserFor(slackChannel, slackUserID string, matrixRoom *matrix.Room) *matrix.User {
 	slackUserInRoom := b.SlackRoomMembers.Any(slackChannel)
 	if slackUserInRoom == nil {
 		return nil
@@ -188,14 +188,14 @@ func (b *Bridge) matrixUserFor(slackChannel, slackUserID, matrixRoomID string) *
 	}
 	b.MatrixUsers.Mu.Unlock()
 
-	if !user.Rooms(false)[matrixRoomID] {
-		if err := b.matrixBotClient().JoinRoom(matrixRoomID); err != nil {
+	if !user.Rooms(false)[matrixRoom.ID] {
+		if err := b.matrixBotClient().JoinRoom(matrixRoom.ID); err != nil {
 			log.Printf("Error joining bot to room: %v", err)
 		}
-		if err := b.matrixBotClient().Invite(matrixRoomID, matrixUserID); err != nil {
+		if err := b.matrixBotClient().Invite(matrixRoom.ID, matrixUserID); err != nil {
 			log.Printf("Error inviting to room: %v", err)
 		}
-		if err := user.JoinRoom(matrixRoomID); err != nil {
+		if err := user.JoinRoom(matrixRoom.ID); err != nil {
 			log.Printf("Error joining room: %v", err)
 			return nil
 		}

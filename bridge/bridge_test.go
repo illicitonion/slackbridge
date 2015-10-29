@@ -28,7 +28,7 @@ func TestSlackMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms.Link("!abc123:matrix.org", "CANTINA")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "CANTINA")
 
 	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
@@ -62,7 +62,7 @@ func TestSlackMeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms.Link("!abc123:matrix.org", "CANTINA")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "CANTINA")
 
 	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
@@ -97,7 +97,7 @@ func TestSlackMessageWithImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms.Link("!abc123:matrix.org", "CANTINA")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "CANTINA")
 
 	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
@@ -156,7 +156,7 @@ func TestMatrixMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "BOWLINGALLEY")
 
 	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
@@ -190,7 +190,7 @@ func TestMatrixImageMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms.Link("!abc123:matrix.org", "BOWLINGALLEY")
+	rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "BOWLINGALLEY")
 
 	echoSuppresser := common.NewEchoSuppresser()
 	users, err := NewUserMap(db, http.Client{}, rooms, echoSuppresser)
@@ -224,7 +224,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	slackChannel := "BOWLINGALLEY"
-	matrixRoom := "!abc123:matrix.org"
+	matrixRoom := matrix.NewRoom("!abc123:matrix.org")
 	message := "It's Nancy!"
 	matrixUser := "@sean:st.andrews"
 
@@ -265,7 +265,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		Type:    "m.room.message",
 		Content: []byte(`{"msgtype": "m.text", "body": "` + message + `"}`),
 		UserID:  matrixUser,
-		RoomID:  matrixRoom,
+		RoomID:  matrixRoom.ID,
 	})
 
 	select {
@@ -283,7 +283,7 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	slackChannel := "BOWLINGALLEY"
-	matrixRoom := "!abc123:matrix.org"
+	matrixRoom := matrix.NewRoom("!abc123:matrix.org")
 	message := "Shhhhh"
 	slackUser := "U123"
 	asToken := "abc123"
@@ -308,15 +308,15 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 			return `{"ok": true, "user": {"id": "` + slackUser + `", "name": "someoneonslack"}}`
 		}
 
-		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/join" {
+		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom.ID+"/join" {
 			atomic.AddInt32(&joins, 1)
 			return ""
 		}
-		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom+"/invite" {
+		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom.ID+"/invite" {
 			atomic.AddInt32(&invites, 1)
 			return ""
 		}
-		if req.URL.Path != "/_matrix/client/api/v1/rooms/"+matrixRoom+"/send/m.room.message" {
+		if req.URL.Path != "/_matrix/client/api/v1/rooms/"+matrixRoom.ID+"/send/m.room.message" {
 			t.Fatalf("Got request to unexpected path %q", req.URL.Path)
 			return ""
 		}
@@ -446,7 +446,7 @@ func makeBridge(t *testing.T, db *sql.DB) *Bridge {
 	users.Link(matrixUser, slackUser)
 
 	// Subsequent calls should load link from database, but don't yet
-	if err := rooms.Link("!abc123:matrix.org", "CANTINA"); err != nil {
+	if err := rooms.Link(matrix.NewRoom("!abc123:matrix.org"), "CANTINA"); err != nil {
 		t.Fatalf("Error linking rooms: %v", err)
 	}
 
