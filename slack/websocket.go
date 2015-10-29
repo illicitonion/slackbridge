@@ -126,8 +126,16 @@ func (c *client) SendText(channelID, text string) error {
 
 func (c *client) SendImage(channelID, fallbackText, imageURL string) error {
 	v := url.Values{}
-	v.Set("fallback", fallbackText)
-	v.Set("image_url", imageURL)
+	attachments, err := json.Marshal([]map[string]string{
+		map[string]string{
+			"fallback":  fallbackText,
+			"image_url": imageURL,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error json encoding attachments: %v", err)
+	}
+	v.Set("attachments", string(attachments))
 	return c.sendMessage(channelID, v)
 }
 

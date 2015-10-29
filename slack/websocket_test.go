@@ -97,7 +97,15 @@ func TestSendImage(t *testing.T) {
 		return client.SendImage("CANTINA", text, imageURL)
 	}
 	verify := func(v url.Values) bool {
-		return v.Get("fallback") == text && v.Get("image_url") == imageURL
+		var m []map[string]string
+		if err := json.Unmarshal([]byte(v.Get("attachments")), &m); err != nil {
+			log.Print(err)
+			return false
+		}
+		if len(m) != 1 {
+			return false
+		}
+		return m[0]["fallback"] == text && m[0]["image_url"] == imageURL
 	}
 	testSendMessage(t, do, verify)
 }
