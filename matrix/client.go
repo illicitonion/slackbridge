@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -162,18 +163,73 @@ func (c *client) SendText(roomID, text string) error {
 }
 
 func (c *client) SendImage(roomID, text string, image *Image) error {
-	// TODO: Upload image to media server
+	imageURL, err := c.uploadImage(image)
+	if err != nil {
+		return err
+	}
 
 	message := &ImageMessageContent{
 		Body:    text,
 		MsgType: "m.image",
-		URL:     image.URL,
+		URL:     imageURL,
 		Info:    image.Info,
 	}
 
 	url := c.urlBase + pathPrefix + "/rooms/" + roomID + "/send/m.room.message" + c.querystring()
-	_, err := c.postEvent(url, message)
+	_, err = c.postEvent(url, message)
 	return err
+}
+
+func (c *client) uploadImage(image *Image) (string, error) {
+	resp, err := c.client.Get(image.URL)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("bad response from image GET: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+	req, err := http.NewRequest("POST", c.urlBase+"/_matrix/media/v1/upload"+c.querystring(), resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error creating http request: %v", err)
+	}
+
+	var contentType string
+	if image.Info != nil && image.Info.MIMEType != "" {
+		contentType = image.Info.MIMEType
+	} else {
+		contentType = resp.Header.Get("Content-Type")
+	}
+	req.Header.Set("Content-Type", contentType)
+	if image.Info != nil && image.Info.Size > 0 {
+		req.ContentLength = image.Info.Size
+	} else {
+		length, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+		if err != nil {
+			return "", fmt.Errorf("error parsing content-length header: %v", err)
+		}
+		req.ContentLength = length
+	}
+
+	uploadResp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer uploadResp.Body.Close()
+	if uploadResp.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(uploadResp.Body)
+		return "", fmt.Errorf("Bad response from image POST: %s - %s", uploadResp.Status, string(body))
+	}
+	dec := json.NewDecoder(uploadResp.Body)
+	var ur uploadResponse
+	if err := dec.Decode(&ur); err != nil {
+		return "", err
+	}
+	return ur.ContentURI, nil
+}
+
+type uploadResponse struct {
+	ContentURI string `json:"content_uri"`
 }
 
 func (c *client) postEvent(url string, event interface{}) (*http.Response, error) {
