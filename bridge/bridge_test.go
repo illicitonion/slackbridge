@@ -301,6 +301,7 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 
 	calledTwice := make(chan struct{}, 1)
 	var invites int32
+	var botJoins int32
 	var joins int32
 	var calls int32
 	verify := func(req *http.Request) string {
@@ -309,7 +310,11 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 		}
 
 		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom.ID+"/join" {
-			atomic.AddInt32(&joins, 1)
+			if req.URL.Query().Get("user_id") == "" {
+				atomic.AddInt32(&botJoins, 1)
+			} else {
+				atomic.AddInt32(&joins, 1)
+			}
 			return ""
 		}
 		if req.URL.Path == "/_matrix/client/api/v1/rooms/"+matrixRoom.ID+"/invite" {
@@ -380,6 +385,9 @@ func TestSlackMessageFromUnlinkedUser(t *testing.T) {
 	case _ = <-calledTwice:
 		if got := atomic.LoadInt32(&joins); got != 1 {
 			t.Errorf("join count: want: %d, got: %d", 1, got)
+		}
+		if got := atomic.LoadInt32(&botJoins); got != 1 {
+			t.Errorf("bot join count: want: %d, got: %d", 1, got)
 		}
 		return
 	case _ = <-time.After(50 * time.Millisecond):
