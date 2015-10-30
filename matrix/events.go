@@ -22,6 +22,11 @@ type ImageMessageContent struct {
 	Info    *ImageInfo `json:"info"`
 }
 
+type Image struct {
+	URL  string
+	Info *ImageInfo
+}
+
 type ImageInfo struct {
 	Height   int    `json:"h"`
 	Width    int    `json:"w"`
@@ -33,4 +38,18 @@ type StateEvent struct {
 	Content  json.RawMessage `json:"content"`
 	Type     string          `json:"type"`
 	StateKey string          `json:"state_key"`
+}
+
+type UserInfo struct {
+	AvatarURL   string `json:"avatar_url"`
+	DisplayName string `json:"displayname"`
+	Membership  string `json:"membership"`
+}
+
+type RoomMemberEvent struct {
+	Type     string   `json:"type"`
+	StateKey string   `json:"state_key"`
+	Content  UserInfo `json:"content"`
+	RoomID   string   `json:"room_id"`
+	UserID   string   `json:"user_id"`
 }

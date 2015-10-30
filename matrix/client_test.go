@@ -120,6 +120,58 @@ func listenTest(t *testing.T, echoSuppresser *common.EchoSuppresser, verify func
 	verify(called)
 }
 
+func TestMemberEvent(t *testing.T) {
+	s := httptest.NewServer(&stubHandler{`{
+	"chunk": [{
+	  "content": {
+	    "membership": "join",
+	    "displayname": "ME!"
+	  },
+	  "room_id": "!cantina:london",
+	  "type": "m.room.member",
+	  "state_key": "@nancy:london",
+	  "user_id": "@nancy:london",
+	  "event_id": "abc123:some.server"
+	}],
+	"start": "1",
+	"end": "1"
+}`})
+	defer s.Close()
+
+	called := make(chan struct{}, 1)
+
+	c := NewClient("6000000000peopleandyou", http.Client{}, s.URL, common.NewEchoSuppresser())
+
+	c.OnRoomMember(func(m RoomMemberEvent) {
+		if m.RoomID != "!cantina:london" {
+			t.Errorf("RoomID: want %q got %q", "!cantina:london", m.RoomID)
+		}
+		if m.UserID != "@nancy:london" {
+			t.Errorf("UserID: want %q got %q", "@nancy:london", m.UserID)
+		}
+		if m.StateKey != "@nancy:london" {
+			t.Errorf("StateKey: want %q got %q", "@nancy:london", m.StateKey)
+		}
+		if m.Content.Membership != "join" {
+			t.Errorf("Membership: want %q got %q", "join", m.Content.Membership)
+		}
+		if m.Content.DisplayName != "ME!" {
+			t.Errorf("DisplayName: want %q got %q", "ME!", m.Content.DisplayName)
+		}
+		called <- struct{}{}
+	})
+	ch := make(chan struct{}, 1)
+	defer func() { ch <- struct{}{} }()
+	go c.Listen(ch)
+
+	select {
+	case _ = <-called:
+		return
+	case _ = <-time.After(50 * time.Millisecond):
+		t.Fatalf("Timed out waiting for event")
+	}
+}
+
 type handler struct {
 	t      *testing.T
 	called *int32

@@ -88,6 +88,17 @@ func (b *Bridge) handleSlackFile(m slack.Message, matrixRoom string, matrixUser 
 	return true
 }
 
+func (b *Bridge) OnMatrixRoomMember(m matrix.RoomMemberEvent) {
+	room := b.RoomMap.MatrixRoom(m.RoomID)
+	if room == nil {
+		log.Printf("Ignoring membership event for matrix room %q", m.RoomID)
+		return
+	}
+	if m.Content.Membership == "join" {
+		room.Users[m.UserID] = m.Content
+	}
+}
+
 func (b *Bridge) OnMatrixRoomMessage(m matrix.RoomMessage) {
 	slackChannel := b.RoomMap.SlackForMatrix(m.RoomID)
 	if slackChannel == "" {

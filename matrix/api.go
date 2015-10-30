@@ -12,14 +12,3 @@ type Client interface {
 	Homeserver() string
 	AccessToken() string
 }
-
-type Image struct {
-	URL  string
-	Info *ImageInfo
-}
-
-type UserInfo struct {
-	AvatarURL   string `json:"avatar_url"`
-	DisplayName string `json:"displayname"`
-	Membership  string `json:"membership"`
-}

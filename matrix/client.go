@@ -47,6 +47,7 @@ type client struct {
 
 	mu                  sync.Mutex
 	roomMessageHandlers []func(RoomMessage)
+	roomMemberHandlers  []func(RoomMemberEvent)
 }
 
 func (c *client) Homeserver() string {
@@ -104,7 +105,6 @@ func (c *client) parseResponse(body io.ReadCloser) string {
 		}
 		switch t.Type {
 		case "m.room.message":
-			log.Println("Got m.room.message")
 			var roomMessage RoomMessage
 			if err := json.Unmarshal(raw, &roomMessage); err != nil {
 				log.Printf("Error decoding inner json: %v", err)
@@ -118,8 +118,19 @@ func (c *client) parseResponse(body io.ReadCloser) string {
 				log.Printf("No listeners for room message events")
 			}
 			for _, h := range c.roomMessageHandlers {
-				log.Printf("Sending received matrix message to handler")
 				h(roomMessage)
+			}
+		case "m.room.member":
+			var roomMember RoomMemberEvent
+			if err := json.Unmarshal(raw, &roomMember); err != nil {
+				log.Printf("Error decoding inner json: %v", err)
+				continue
+			}
+			if len(c.roomMemberHandlers) == 0 {
+				log.Printf("No listeners for room member events")
+			}
+			for _, h := range c.roomMemberHandlers {
+				h(roomMember)
 			}
 		default:
 			log.Printf("Ignoring unknown event %q", string(raw))
@@ -149,6 +160,12 @@ func (c *client) OnRoomMessage(h func(RoomMessage)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.roomMessageHandlers = append(c.roomMessageHandlers, h)
+}
+
+func (c *client) OnRoomMember(h func(RoomMemberEvent)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.roomMemberHandlers = append(c.roomMemberHandlers, h)
 }
 
 func (c *client) SendText(roomID, text string) error {

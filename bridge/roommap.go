@@ -50,6 +50,12 @@ func NewRoomMap(db *sql.DB) (*RoomMap, error) {
 	return m, nil
 }
 
+func (m *RoomMap) MatrixRoom(matrixRoomID string) *matrix.Room {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.slackToMatrix[m.matrixToSlack[matrixRoomID]]
+}
+
 func (m *RoomMap) MatrixForSlack(slack string) *matrix.Room {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

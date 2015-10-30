@@ -227,9 +227,6 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 	message := "It's Nancy!"
 	matrixUser := "@sean:st.andrews"
 	matrixRoom := matrix.NewRoom("!abc123:matrix.org")
-	matrixRoom.Users[matrixUser] = matrix.UserInfo{
-		AvatarURL: "mxc://st.andrews/sean.jpg",
-	}
 
 	rooms.Link(matrixRoom, slackChannel)
 
@@ -242,6 +239,7 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 	slackRoomMembers := slack.NewRoomMembers()
 	slackRoomMembers.Add(slackChannel, &slack.User{"someone", &MockSlackClient{}})
 
+	var calls int32
 	called := make(chan struct{}, 1)
 	verify := func(req *http.Request) string {
 		b, err := ioutil.ReadAll(req.Body)
@@ -257,8 +255,17 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		assertUrlValueEquals(t, v, "text", message)
 		assertUrlValueEquals(t, v, "as_user", "false")
 		assertUrlValueEquals(t, v, "username", matrixUser)
-		assertUrlValueEquals(t, v, "icon_url", "https://hs.url/_matrix/media/v1/download/st.andrews/sean.jpg")
-		called <- struct{}{}
+		if c := atomic.LoadInt32(&calls); c == 0 {
+			if got, ok := v["icon_url"]; ok {
+				t.Errorf("Want icon_url absent, got: %v", got)
+			}
+		} else if c == 1 {
+			assertUrlValueEquals(t, v, "icon_url", "https://hs.url/_matrix/media/v1/download/st.andrews/sean.jpg")
+		}
+		atomic.AddInt32(&calls, 1)
+		if calls == 2 {
+			called <- struct{}{}
+		}
 		return ""
 	}
 	client := http.Client{
@@ -274,11 +281,29 @@ func TestMatrixMessageFromUnlinkedUser(t *testing.T) {
 		RoomID:  matrixRoom.ID,
 	})
 
+	bridge.OnMatrixRoomMember(matrix.RoomMemberEvent{
+		Type: "m.room.member",
+		Content: matrix.UserInfo{
+			Membership: "join",
+			AvatarURL:  "mxc://st.andrews/sean.jpg",
+		},
+		StateKey: matrixUser,
+		UserID:   matrixUser,
+		RoomID:   matrixRoom.ID,
+	})
+
+	bridge.OnMatrixRoomMessage(matrix.RoomMessage{
+		Type:    "m.room.message",
+		Content: []byte(`{"msgtype": "m.text", "body": "` + message + `"}`),
+		UserID:  matrixUser,
+		RoomID:  matrixRoom.ID,
+	})
+
 	select {
 	case _ = <-called:
 		return
 	case _ = <-time.After(50 * time.Millisecond):
-		t.Fatalf("Didn't get expected call")
+		t.Fatalf("Didn't get expected calls (2), got: %d", atomic.LoadInt32(&calls))
 	}
 }
 
